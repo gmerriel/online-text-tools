@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sentence Split & Clean</title>
+  <style>
+    :root { --bg:#0b0c10; --card:#111318; --muted:#97a0ad; --text:#e7ebf3; --accent:#4da3ff; }
+    * { box-sizing: border-box; }
+    body { margin:0; font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--text); }
+    .wrap { max-width:1100px; margin:32px auto; padding:0 16px; }
+    .header { display:flex; gap:12px; flex-wrap:wrap; align-items:center; justify-content:space-between; margin-bottom:12px; }
+    .title { font-weight:700; letter-spacing:.2px; }
+    .muted { color:var(--muted); font-size:14px; }
+    .card { background:var(--card); border:1px solid #1a1d24; border-radius:14px; padding:14px; }
+    .grid { display:grid; grid-template-columns:1fr; gap:14px; }
+    @media (min-width:900px){ .grid { grid-template-columns:1fr 1fr; } }
+    textarea { width:100%; min-height:420px; resize:vertical; background:#0e1016; color:var(--text); border:1px solid #20232b; border-radius:10px; padding:12px 12px 44px; outline:none; }
+    .controls { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .btn { border:1px solid #20232b; background:#141822; color:var(--text); padding:10px 14px; border-radius:10px; cursor:pointer; }
+    .btn:hover { border-color:#2b3340; }
+    .btn.primary { background:var(--accent); color:#00142a; border-color:transparent; font-weight:700; }
+    .btn.ghost { background:transparent; }
+    .row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    label { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--muted); cursor:pointer; }
+    .footer { margin-top:8px; font-size:12px; color:var(--muted); text-align:right; }
+    .hint { font-size:12px; color:var(--muted); margin-top:-6px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <div>
+        <div class="title">Sentence Split & Clean</div>
+        <div class="muted">Paste anything → plain text → one sentence per line → blank line between.</div>
+      </div>
+      <div class="controls">
+        <button id="convert" class="btn primary">Convert</button>
+        <button id="copy" class="btn">Copy</button>
+        <button id="download" class="btn">Download .txt</button>
+        <button id="clear" class="btn ghost">Clear</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="row" style="margin-bottom:6px">
+          <div class="muted">Input</div>
+          <label><input type="checkbox" id="stripHtml" checked /> Strip HTML/styling automatically</label>
+        </div>
+        <textarea id="input" placeholder="Paste rich text, HTML, Google Docs/Word content, transcripts, etc."></textarea>
+        <div class="hint">Tip: leave “Strip HTML” on if you paste from Docs/Word/emails.</div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="margin-bottom:6px">
+          <div class="muted">Output</div>
+          <div id="stats" class="muted">Characters: 0 | Words: 0 | Sentences: 0</div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+          <input type="checkbox" id="live" /> Live as you type
+        </label>
+        <textarea id="output" placeholder="Your cleaned, sentence-per-line text will appear here." readonly></textarea>
+        <div class="hint">Adds an empty line between sentences by design.</div>
+      </div>
+    </div>
+
+    <div class="footer">Built with vanilla JS. Uses <code>Intl.Segmenter</code> for accurate sentence splitting when available.</div>
+  </div>
+
+  <script>
+    const $ = sel => document.querySelector(sel);
+    const inputEl = $('#input');
+    const outputEl = $('#output');
+    const stripHtmlEl = $('#stripHtml');
+    const liveEl = $('#live');
+    const statsEl = $('#stats');
+
+    const COMMON_ABBR = [
+      "Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "Sr.", "Jr.", "St.", "Mt.",
+      "vs.", "etc.", "e.g.", "i.e.", "a.m.", "p.m.", "U.S.", "U.K.", "No."
+    ];
+    const ABBR_PLACEHOLDER = "\uE000"; // private-use char
+
+    function detectHtml(s) {
+      return /<\/?[a-z][\s\S]*>/i.test(s);
+    }
+
+    function preNormalizeWhitespace(s) {
+      return s.replace(/\r\n?/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\u00A0/g, ' ');
+    }
+
+    function stripHtmlToText(s) {
+      s = s.replace(/<\s*br\s*\/?>/gi, "\n");
+      s = s.replace(/<\/\s*(p|div|li|h[1-6]|blockquote|tr)\s*>/gi, "\n");
+      s = s.replace(/<style[\s\S]*?<\/style>/gi, "")
+           .replace(/<script[\s\S]*?<\/script>/gi, "")
+           .replace(/<[^>]+>/g, "");
+      return s;
+    }
+
+    function protectAbbreviations(text) {
+      let out = text;
+      COMMON_ABBR.forEach(abbr => {
+        const safe = abbr.replace(/\./g, ABBR_PLACEHOLDER);
+        const re = new RegExp(abbr.replace('.', '\\.'), 'g');
+        out = out.replace(re, safe);
+      });
+      return out;
+    }
+
+    function restoreAbbreviations(text) {
+      return text.replace(new RegExp(ABBR_PLACEHOLDER, 'g'), '.');
+    }
+
+    function normalizeInternalSpaces(s) {
+      return s.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, "\n\n").trim();
+    }
+
+    function splitIntoSentences(text) {
+      if (window.Intl && Intl.Segmenter) {
+        try {
+          const seg = new Intl.Segmenter('en', { granularity: 'sentence' });
+          const parts = [...seg.segment(text)].map(x => x.segment.trim());
+          return parts.filter(Boolean);
+        } catch {}
+      }
+      const protectedText = protectAbbreviations(text);
+      const rough = protectedText.split(/(?<=[.!?。！？])\s+(?=(["“'(\[]?[A-Z0-9]))/g);
+      return rough.map(s => restoreAbbreviations(s.trim())).filter(Boolean);
+    }
+
+    function updateStats(text) {
+      const charCount = text.length;
+      const wordCount = text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
+      const sentenceCount = text.trim() ? text.split(/\n\s*\n/).filter(Boolean).length : 0;
+      statsEl.textContent = `Characters: ${charCount} | Words: ${wordCount} | Sentences: ${sentenceCount}`;
+    }
+
+    function convert() {
+      let raw = inputEl.value || "";
+      if (!raw.trim()) { outputEl.value = ""; updateStats(""); return; }
+
+      let text = preNormalizeWhitespace(raw);
+
+      if (stripHtmlEl.checked && detectHtml(text)) {
+        text = stripHtmlToText(text);
+      }
+
+      text = text.replace(/[ \t]{2,}/g, ' ');
+      text = text.replace(/\n{2,}/g, "\n");
+
+      const sentences = splitIntoSentences(text);
+      const cleaned = sentences.map(s =>
+        normalizeInternalSpaces(s.replace(/\s*\n\s*/g, ' ').trim())
+      );
+
+      outputEl.value = cleaned.join("\n\n") + "\n";
+      updateStats(outputEl.value);
+    }
+
+    $('#convert').addEventListener('click', convert);
+
+    $('#copy').addEventListener('click', async () => {
+      if (!outputEl.value) return;
+      try {
+        await navigator.clipboard.writeText(outputEl.value);
+        flash('Copied!');
+      } catch {
+        outputEl.select(); document.execCommand('copy'); flash('Copied!');
+      }
+    });
+
+    $('#download').addEventListener('click', () => {
+      const blob = new Blob([outputEl.value || ""], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'cleaned_sentences.txt';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    });
+
+    $('#clear').addEventListener('click', () => {
+      inputEl.value = ""; outputEl.value = ""; updateStats("");
+    });
+
+    inputEl.addEventListener('input', () => { if (liveEl.checked) convert(); });
+
+    function flash(msg) {
+      const b = document.createElement('div');
+      b.textContent = msg;
+      b.style.position='fixed'; b.style.right='16px'; b.style.bottom='16px';
+      b.style.background='rgba(77,163,255,.95)'; b.style.color='#00142a';
+      b.style.padding='10px 14px'; b.style.borderRadius='10px'; b.style.fontWeight='700';
+      b.style.boxShadow='0 6px 30px rgba(0,0,0,.35)';
+      document.body.appendChild(b);
+      setTimeout(()=>b.remove(), 1200);
+    }
+
+    // Initialize stats on load
+    updateStats("");
+  </script>
+</body>
+</html>
