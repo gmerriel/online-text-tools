@@ -58,7 +58,7 @@
           <div id="stats" class="muted">Characters: 0 | Words: 0 | Sentences: 0</div>
         </div>
         <label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-          <input type="checkbox" id="live" /> Live as you type
+          <input type="checkbox" id="live" checked /> Live as you type
         </label>
         <textarea id="output" placeholder="Your cleaned, sentence-per-line text will appear here." readonly></textarea>
         <div class="hint">Adds an empty line between sentences by design.</div>
@@ -75,6 +75,12 @@
     const stripHtmlEl = $('#stripHtml');
     const liveEl = $('#live');
     const statsEl = $('#stats');
+
+    // Turn live mode on by default
+    liveEl.checked = true;
+
+    // If there's already text in the input (e.g., after refresh), run conversion once
+    if (inputEl.value.trim()) convert();
 
     const COMMON_ABBR = [
       "Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "Sr.", "Jr.", "St.", "Mt.",
