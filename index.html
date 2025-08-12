@@ -124,16 +124,27 @@
     }
 
     function splitIntoSentences(text) {
-      if (window.Intl && Intl.Segmenter) {
-        try {
-          const seg = new Intl.Segmenter('en', { granularity: 'sentence' });
-          const parts = [...seg.segment(text)].map(x => x.segment.trim());
-          return parts.filter(Boolean);
-        } catch {}
-      }
-      const protectedText = protectAbbreviations(text);
-      const rough = protectedText.split(/(?<=[.!?。！？])\s+(?=(["“'(\[]?[A-Z0-9]))/g);
-      return rough.map(s => restoreAbbreviations(s.trim())).filter(Boolean);
+      // Keep ellipses together (… or ...), then split on enders or newlines.
+      const ELLIP = "\uE001";          // placeholder for ellipsis
+      const MARK  = "\u241E";          // record separator as a split marker
+
+      // Normalize Windows line breaks, non-breaking spaces, etc., already handled upstream,
+      // but convert 3+ dots to a single placeholder so we don't split inside ellipses.
+      let t = text.replace(/\.{3,}/g, ELLIP);
+
+      // 1) Mark sentence boundaries after . ! ? (optionally followed by quotes/brackets)
+      //    Works even if there are multiple enders like "!!" or ".."
+      t = t.replace(/([.!?]+["”’)\]]*)(?=\s|$)/g, `$1${MARK}`);
+
+      // 2) Treat ANY newline(s) as a boundary too
+      t = t.replace(/\n+/g, MARK);
+
+      // 3) Split on the marker, trim, and restore ellipses
+      return t
+        .split(MARK)
+        .map(s => s.trim())
+        .filter(Boolean)
+        .map(s => s.replace(new RegExp(ELLIP, 'g'), '...'));
     }
 
     function updateStats(text) {
