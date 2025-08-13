@@ -27,6 +27,8 @@
     .hint { font-size:12px; color:var(--muted); margin-top:-6px; }
     .toolbar { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
     .toolbar .btn { padding:8px 10px; font-size:13px; }
+    #output { margin-bottom: 12px; }   /* space above the toolbar */
+    .toolbar { margin-top: 12px; position: relative; z-index: 1; }
   </style>
 </head>
 <body>
@@ -72,7 +74,7 @@
           <button class="btn" id="case-capitalized">Capitalized Case</button>
           <button class="btn" id="case-alternating">aLtErNaTiNg cAsE</button>
           <button class="btn" id="case-title">Title Case</button>
-          <button class="btn" id="case-inverse">InVeRsE cAsE</button>
+          <button class="btn" id="case-inverse">iNVERSE cASE</button>
         </div>
 
         <div class="hint">Adds an empty line between sentences by design. Case tools change the output in-place.</div>
@@ -127,11 +129,26 @@
     // Robust sentence splitter: punctuation OR any newline becomes a boundary; keeps ellipses intact.
     function splitIntoSentences(text) {
       const ELLIP = "\uE001";  // ellipsis placeholder
-      const MARK  = "\u241E";  // record-separator split marker
-      let t = text.replace(/\.{3,}/g, ELLIP);
+      const MARK  = "\u241E";  // split marker
+
+      // Normalize ellipses to a placeholder
+      let t = text
+        .replace(/\u2026/g, "...")   // convert unicode ellipsis to three dots
+        .replace(/\.{3,}/g, ELLIP);  // protect any 3+ dots as one token
+
+      // Mark sentence boundaries AFTER punctuation (. ! ?) and AFTER ellipses
       t = t.replace(/([.!?]+["”’)\]]*)(?=\s|$)/g, `$1${MARK}`);
+      t = t.replace(new RegExp(ELLIP + '(?=\\s|$)', 'g'), ELLIP + MARK); // ellipsis ends sentence
+
+      // Any newline(s) are also boundaries
       t = t.replace(/\n+/g, MARK);
-      return t.split(MARK).map(s => s.trim()).filter(Boolean).map(s => s.replace(new RegExp(ELLIP, 'g'), '...'));
+
+      // Split, trim, restore ellipses
+      return t
+        .split(MARK)
+        .map(s => s.trim())
+        .filter(Boolean)
+        .map(s => s.replace(new RegExp(ELLIP, 'g'), '...'));
     }
 
     function updateStats(text) {
