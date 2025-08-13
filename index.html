@@ -25,6 +25,8 @@
     label { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--muted); cursor:pointer; }
     .footer { margin-top:8px; font-size:12px; color:var(--muted); text-align:right; }
     .hint { font-size:12px; color:var(--muted); margin-top:-6px; }
+    .toolbar { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .toolbar .btn { padding:8px 10px; font-size:13px; }
   </style>
 </head>
 <body>
@@ -55,13 +57,25 @@
       <div class="card">
         <div class="row" style="margin-bottom:6px">
           <div class="muted">Output</div>
-          <div id="stats" class="muted">Characters: 0 | Words: 0 | Sentences: 0</div>
+          <div id="stats" class="muted">Characters: 0 | Words: 0 | Sentences: 0 | Lines: 0</div>
         </div>
         <label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
           <input type="checkbox" id="live" checked /> Live as you type
         </label>
         <textarea id="output" placeholder="Your cleaned, sentence-per-line text will appear here." readonly></textarea>
-        <div class="hint">Adds an empty line between sentences by design.</div>
+
+        <!-- Case conversion toolbar -->
+        <div class="toolbar">
+          <button class="btn" id="case-sentence">Sentence case</button>
+          <button class="btn" id="case-lower">lower case</button>
+          <button class="btn" id="case-upper">UPPER CASE</button>
+          <button class="btn" id="case-capitalized">Capitalized Case</button>
+          <button class="btn" id="case-alternating">aLtErNaTiNg cAsE</button>
+          <button class="btn" id="case-title">Title Case</button>
+          <button class="btn" id="case-inverse">InVeRsE cAsE</button>
+        </div>
+
+        <div class="hint">Adds an empty line between sentences by design. Case tools change the output in-place.</div>
       </div>
     </div>
 
@@ -76,26 +90,16 @@
     const liveEl = $('#live');
     const statsEl = $('#stats');
 
-    // Turn live mode on by default
-    liveEl.checked = true;
-
-    // If there's already text in the input (e.g., after refresh), run conversion once
-    if (inputEl.value.trim()) convert();
-
     const COMMON_ABBR = [
       "Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "Sr.", "Jr.", "St.", "Mt.",
       "vs.", "etc.", "e.g.", "i.e.", "a.m.", "p.m.", "U.S.", "U.K.", "No."
     ];
     const ABBR_PLACEHOLDER = "\uE000"; // private-use char
 
-    function detectHtml(s) {
-      return /<\/?[a-z][\s\S]*>/i.test(s);
-    }
-
+    function detectHtml(s) { return /<\/?[a-z][\s\S]*>/i.test(s); }
     function preNormalizeWhitespace(s) {
       return s.replace(/\r\n?/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\u00A0/g, ' ');
     }
-
     function stripHtmlToText(s) {
       s = s.replace(/<\s*br\s*\/?>/gi, "\n");
       s = s.replace(/<\/\s*(p|div|li|h[1-6]|blockquote|tr)\s*>/gi, "\n");
@@ -104,7 +108,6 @@
            .replace(/<[^>]+>/g, "");
       return s;
     }
-
     function protectAbbreviations(text) {
       let out = text;
       COMMON_ABBR.forEach(abbr => {
@@ -114,44 +117,29 @@
       });
       return out;
     }
-
     function restoreAbbreviations(text) {
       return text.replace(new RegExp(ABBR_PLACEHOLDER, 'g'), '.');
     }
-
     function normalizeInternalSpaces(s) {
       return s.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, "\n\n").trim();
     }
 
+    // Robust sentence splitter: punctuation OR any newline becomes a boundary; keeps ellipses intact.
     function splitIntoSentences(text) {
-      // Keep ellipses together (… or ...), then split on enders or newlines.
-      const ELLIP = "\uE001";          // placeholder for ellipsis
-      const MARK  = "\u241E";          // record separator as a split marker
-
-      // Normalize Windows line breaks, non-breaking spaces, etc., already handled upstream,
-      // but convert 3+ dots to a single placeholder so we don't split inside ellipses.
+      const ELLIP = "\uE001";  // ellipsis placeholder
+      const MARK  = "\u241E";  // record-separator split marker
       let t = text.replace(/\.{3,}/g, ELLIP);
-
-      // 1) Mark sentence boundaries after . ! ? (optionally followed by quotes/brackets)
-      //    Works even if there are multiple enders like "!!" or ".."
       t = t.replace(/([.!?]+["”’)\]]*)(?=\s|$)/g, `$1${MARK}`);
-
-      // 2) Treat ANY newline(s) as a boundary too
       t = t.replace(/\n+/g, MARK);
-
-      // 3) Split on the marker, trim, and restore ellipses
-      return t
-        .split(MARK)
-        .map(s => s.trim())
-        .filter(Boolean)
-        .map(s => s.replace(new RegExp(ELLIP, 'g'), '...'));
+      return t.split(MARK).map(s => s.trim()).filter(Boolean).map(s => s.replace(new RegExp(ELLIP, 'g'), '...'));
     }
 
     function updateStats(text) {
       const charCount = text.length;
       const wordCount = text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
       const sentenceCount = text.trim() ? text.split(/\n\s*\n/).filter(Boolean).length : 0;
-      statsEl.textContent = `Characters: ${charCount} | Words: ${wordCount} | Sentences: ${sentenceCount}`;
+      const lineCount = text ? text.split(/\n/).filter(l => l.length > 0).length : 0;
+      statsEl.textContent = `Characters: ${charCount} | Words: ${wordCount} | Sentences: ${sentenceCount} | Lines: ${lineCount}`;
     }
 
     function convert() {
@@ -159,35 +147,26 @@
       if (!raw.trim()) { outputEl.value = ""; updateStats(""); return; }
 
       let text = preNormalizeWhitespace(raw);
-
-      if (stripHtmlEl.checked && detectHtml(text)) {
-        text = stripHtmlToText(text);
-      }
-
-      text = text.replace(/[ \t]{2,}/g, ' ');
-      text = text.replace(/\n{2,}/g, "\n");
+      if (stripHtmlEl.checked && detectHtml(text)) text = stripHtmlToText(text);
+      text = text.replace(/[ \t]{2,}/g, ' ').replace(/\n{2,}/g, "\n");
 
       const sentences = splitIntoSentences(text);
-      const cleaned = sentences.map(s =>
-        normalizeInternalSpaces(s.replace(/\s*\n\s*/g, ' ').trim())
-      );
-
+      const cleaned = sentences.map(s => normalizeInternalSpaces(s.replace(/\s*\n\s*/g, ' ').trim()));
       outputEl.value = cleaned.join("\n\n") + "\n";
       updateStats(outputEl.value);
     }
 
-    $('#convert').addEventListener('click', convert);
+    // Live mode ON by default + run once on load if input has text
+    liveEl.checked = true;
+    if (inputEl.value && inputEl.value.trim()) convert();
 
+    // Buttons
+    $('#convert').addEventListener('click', convert);
     $('#copy').addEventListener('click', async () => {
       if (!outputEl.value) return;
-      try {
-        await navigator.clipboard.writeText(outputEl.value);
-        flash('Copied!');
-      } catch {
-        outputEl.select(); document.execCommand('copy'); flash('Copied!');
-      }
+      try { await navigator.clipboard.writeText(outputEl.value); flash('Copied!'); }
+      catch { outputEl.select(); document.execCommand('copy'); flash('Copied!'); }
     });
-
     $('#download').addEventListener('click', () => {
       const blob = new Blob([outputEl.value || ""], { type: 'text/plain;charset=utf-8' });
       const a = document.createElement('a');
@@ -196,12 +175,78 @@
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     });
-
-    $('#clear').addEventListener('click', () => {
-      inputEl.value = ""; outputEl.value = ""; updateStats("");
-    });
-
+    $('#clear').addEventListener('click', () => { inputEl.value = ""; outputEl.value = ""; updateStats(""); });
     inputEl.addEventListener('input', () => { if (liveEl.checked) convert(); });
+
+    // ---- Case conversion helpers (operate on OUTPUT text; preserve blank lines) ----
+    function transformOutput(fn) {
+      const newText = fn(outputEl.value || "");
+      outputEl.value = newText;
+      updateStats(newText);
+    }
+
+    function toLower(text) { return text.toLowerCase(); }
+    function toUpper(text) { return text.toUpperCase(); }
+    function toInverse(text) {
+      return text.replace(/[a-zA-Z]/g, ch => ch === ch.toLowerCase() ? ch.toUpperCase() : ch.toLowerCase());
+    }
+    function toAlternating(text) {
+      let toggle = true;
+      return text.split('').map(ch => {
+        if (/[a-zA-Z]/.test(ch)) {
+          const out = toggle ? ch.toLowerCase() : ch.toUpperCase();
+          toggle = !toggle;
+          return out;
+        }
+        return ch;
+      }).join('');
+    }
+    function toCapitalized(text) {
+      return text.replace(/\b([A-Za-zÁ-ÿ])([A-Za-zÁ-ÿ']*)\b/g, (_, a, b) => a.toUpperCase() + b.toLowerCase());
+    }
+    function toSentenceCase(text) {
+      // Work line-by-line so each sentence line gets capitalized; keep blanks
+      return text.split('\n').map(line => {
+        const trimmed = line.trim();
+        if (!trimmed) return line; // keep blank lines
+        const lower = trimmed.toLowerCase();
+        // Capitalize first alphabetical character
+        const i = lower.search(/[a-z]/i);
+        if (i === -1) return lower;
+        return lower.slice(0, i) + lower[i].toUpperCase() + lower.slice(i + 1);
+      }).join('\n');
+    }
+    function toTitleCase(text) {
+      const small = new Set(['a','an','the','and','but','or','nor','for','so','yet','as','at','by','in','of','on','per','to','via','from','over','into','onto','off','up','down','with','without']);
+      return text.split('\n').map(line => {
+        const words = line.split(/(\s+)/); // keep spaces
+        let firstReal = -1, lastReal = -1;
+        for (let i=0;i<words.length;i++) if (/\S/.test(words[i])) { firstReal = i; break; }
+        for (let i=words.length-1;i>=0;i--) if (/\S/.test(words[i])) { lastReal = i; break; }
+        return words.map((w, idx) => {
+          if (!/\S/.test(w)) return w;
+          const plain = w.replace(/[^A-Za-zÁ-ÿ']/g, '');
+          const core = plain.toLowerCase();
+          const cap = core ? core[0].toUpperCase() + core.slice(1) : '';
+          const rebuilt = w.replace(plain, cap);
+          const isEdge = (idx === firstReal || idx === lastReal);
+          if (!isEdge && small.has(core)) {
+            // small word -> lower
+            return w.replace(plain, core);
+          }
+          return rebuilt;
+        }).join('');
+      }).join('\n');
+    }
+
+    // Hook up toolbar
+    $('#case-lower').addEventListener('click', () => transformOutput(toLower));
+    $('#case-upper').addEventListener('click', () => transformOutput(toUpper));
+    $('#case-inverse').addEventListener('click', () => transformOutput(toInverse));
+    $('#case-alternating').addEventListener('click', () => transformOutput(toAlternating));
+    $('#case-capitalized').addEventListener('click', () => transformOutput(toCapitalized));
+    $('#case-sentence').addEventListener('click', () => transformOutput(toSentenceCase));
+    $('#case-title').addEventListener('click', () => transformOutput(toTitleCase));
 
     function flash(msg) {
       const b = document.createElement('div');
