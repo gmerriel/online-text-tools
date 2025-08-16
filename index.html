@@ -199,6 +199,8 @@
 
     // ---- Case conversion helpers (operate on OUTPUT text; preserve blank lines) ----
     function transformOutput(fn) {
+      ensureOutputFilled(); // <-- auto-fill output from input if empty
+      const outputEl = $('#output');
       const newText = fn(outputEl.value || "");
       outputEl.value = restoreAcronyms(newText);
       updateStats(outputEl.value);
@@ -1094,14 +1096,17 @@ Zip = Zipper
       return replacement.toLowerCase();
     }
     function phraseRegex(term){
+      // Escape regex chars in a dictionary term
       const esc = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      return new RegExp(`\\b${esc}\\b`, 'gi');
+      // Match start or non-alnum before, end or non-alnum after.
+      // Use two groups so we can keep the leading separator intact.
+      return new RegExp(`(^|[^A-Za-z0-9])(${esc})(?=$|[^A-Za-z0-9])`, 'gi');
     }
     function swapWithList(text, list){
       let out = text;
       for (const [from,to] of list){
         const re = phraseRegex(from);
-        out = out.replace(re, (m)=>preserveCaseReplace(m, to));
+        out = out.replace(re, (match, pre, hit) => pre + preserveCaseReplace(hit, to));
       }
       return out;
     }
