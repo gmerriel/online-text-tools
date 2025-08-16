@@ -105,24 +105,6 @@
       'AI','USA','US','UK','EU','U.S.','U.K.','NATO','FBI','CIA','HR','CEO','CFO','CTO','CRM','API','SMS','SEO','SEM','PDF','HTML','CSS'
     ]);
 
-    // --- US/UK spelling maps (curated; extend freely) ---
-    const US2UK = {
-      'color':'colour','colors':'colours','honor':'honour','humor':'humour',
-      'favorite':'favourite','favorites':'favourites',
-      'organize':'organise','organizes':'organises','organizing':'organising','organized':'organised','organization':'organisation',
-      'analyze':'analyse','analyzes':'analyses','analyzing':'analysing','analyzed':'analysed','analysis':'analysis',
-      'optimize':'optimise','optimized':'optimised','optimizing':'optimising','optimization':'optimisation',
-      'center':'centre','centers':'centres','meter':'metre','meters':'metres',
-      'liter':'litre','liters':'litres',
-      'defense':'defence','offense':'offence',
-      'license':'licence', 'licensed':'licenced', /* noun vs verb simplified */
-      'program':'programme', /* context dependent; simple approach */
-      'aluminum':'aluminium','catalog':'catalogue','dialog':'dialogue',
-      'traveled':'travelled','traveling':'travelling','traveler':'traveller',
-      'gray':'grey'
-    };
-    const UK2US = Object.fromEntries(Object.entries(US2UK).map(([k,v]) => [v,k]));
-
     const COMMON_ABBR = [
       "Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "Sr.", "Jr.", "St.", "Mt.",
       "vs.", "etc.", "e.g.", "i.e.", "a.m.", "p.m.", "U.S.", "U.K.", "No."
@@ -157,7 +139,6 @@
       return s.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, "\n\n").trim();
     }
     function restoreAcronyms(text){
-      // enforce preferred casing for known acronyms
       ACRONYMS.forEach(acr=>{
         const re = new RegExp(`\\b${acr.replace(/\./g,'\\.')}\\b`,'gi');
         text = text.replace(re, acr);
@@ -304,23 +285,796 @@
     function toTitleCase(text) { return text.split('\n').map(l=>titleCaseCore(l,false)).join('\n'); }
     function toAPTitleCase(text) { return text.split('\n').map(l=>titleCaseCore(l,true)).join('\n'); }
 
-    // Dialect swap preserving case style
-    function swapDialect(text, map){
-      const keys = Object.keys(map).sort((a,b)=>b.length-a.length);
+    /* =========================
+       DIALECT CONVERTER (UK↔US)
+       Driven by your supplied list.
+       ========================= */
+
+    const USER_DIALECT_LIST = `
+A
+accessorise = accessorize
+acclimatise = acclimatize
+accoutrements = accouterments
+aeon = eon
+aerogramme = aerogram
+aeroplane = airplane
+aesthete = esthete
+aesthetic = esthetic
+aetiology = etiology
+ageing = aging
+aggrandisement = aggrandizement
+agonise = agonize
+almanack = almanac
+aluminium = aluminum
+amortisable = amortizable
+amphitheatre = amphitheater
+anaemia = anemia
+anaesthesia = anesthesia
+anaesthetise = anesthetize
+analogue = analog
+analyse = analyze
+anglicise = anglicize
+annualise = annualize
+antagonise = antagonize
+apologise = apologize
+appal = appall
+appetiser = appetizer
+arbour = arbor
+archaeological = archeological
+ardour = ardor
+armour = armor
+artefact = artifact
+authorise = authorize
+axe = ax
+
+B
+backpedalling = backpedaling
+bannister = banister
+baptise = baptize
+bastardise = bastardize
+battle-axe = battleax
+baulk = balk
+bedevilled = bedeviled
+behaviour = behavior
+behove = behoove
+bejewelled = bejeweled
+belabour = belabor
+bevelled = beveled
+bevvy = bevy
+bingeing = binging
+bougainvillaea = bougainvillea
+bowdlerise = bowdlerize
+breathalyse = breathalyze
+brutalise = brutalize
+buses = busses
+
+C
+caesarean = cesarean
+calibre = caliber
+calliper = caliper
+callisthenics = calisthenics
+canalise = canalize
+cancellation = cancelation
+cancelled = canceled
+candour = candor
+cannibalise = cannibalize
+canonise = canonize
+capitalise = capitalize
+caramelise = caramelize
+carbonise = carbonize
+carolling = caroling
+catalogue = catalog
+catalyse = catalyze
+categorise = categorize
+cauterise = cauterize
+cavilling = caviling
+centigramme = centigram
+centilitre = centiliter
+centimetre = centimeter
+centralise = centralize
+centre = center
+centrefold = centerfold
+centrepiece = centerpiece
+channelling = channeling
+characterise = characterize
+cheque = check
+chequebook = checkbook
+chequered = checkered
+chilli = chili
+chimaera = chimera
+chiselled = chiseled
+circularise = circularize
+civilise = civilize
+clamour = clamor
+clangour = clangor
+clarinettist = clarinetist
+collectivise = collectivize
+colonise = colonize
+colour = color
+colourant = colorant
+colourful = colorful
+colourise = colorize
+colourless = colorless
+commercialise = commercialize
+computerise = computerize
+conceptualise = conceptualize
+connexion = connection
+contextualise = contextualize
+cosier = cozier
+cosy = cozy
+counsellor = counselor
+counselling = counseling
+criminalise = criminalize
+criticise = criticize
+cruellest = cruelest
+crystallisation = crystallization
+cudgelling = cudgeling
+customise = customize
+cypher = cipher
+
+D
+decentralisation = decentralization
+decriminalise = decriminalize
+defence = defense
+defenceless = defenseless
+demeanour = demeanor
+demilitarisation = demilitarization
+demobilise = demobilize
+democratise = democratize
+demonise = demonize
+demoralise = demoralize
+denationalise = denationalize
+deodorise = deodorize
+depersonalise = depersonalize
+deputise = deputize
+desensitisation = desensitization
+destabilise = destabilize
+dialling = dialing
+dialogue = dialog
+diarrhoea = diarrhea
+digitise = digitize
+disc = disk
+discolour = discolor
+disembowelling = disemboweling
+disfavour = disfavor
+dishevelled = disheveled
+dishonour = dishonor
+disorganisation = disorganization
+distil = distill
+dramatising = dramatizing
+draught = draft
+draughtsman = draftsman
+drivelling = driveling
+duelled = dueled
+
+E
+economise = economize
+edoema = edema
+editorialise = editorialize
+empathise = empathize
+emphasise = emphasize
+enamelled = enameled
+enamoured = enamored
+encyclopaedia = encyclopedia
+endeavour = endeavor
+energise = energize
+enrol = enroll
+enthral = enthrall
+enquire = inquire
+epaulette = epaulet
+epicentre = epicenter
+epilogue = epilog
+epitomise = epitomize
+equalisation = equalization
+eulogise = eulogize
+evangelise = evangelize
+exorcise = exorcize
+extemporisation = extemporization
+exstemalisation = externalization
+externalise = externalize
+
+F
+factorise = factorize
+faecal = fecal
+faeces = feces
+familiarisation = familiarization
+fantasise = fantasize
+favour = favor
+favourable = favorable
+favourite = favorite
+feminise = feminize
+fertilise = fertilize
+fervour = fervor
+fibre = fiber
+fictionalise = fictionalize
+fillet = filet
+finalise = finalize
+flautist = flutist
+flavour = flavor
+foetal = fetal
+foetid = fetid
+foetus = fetus
+formalise = formalize
+fossilise = fossilize
+fraternise = fraternize
+fulfil = fulfill
+fulfilment = fulfillment
+funnelling = funneling
+
+G
+galvanise = galvanize
+gambolling = gamboling
+gaol = jail
+gases = gasses
+gauge = gage
+generalise = generalize
+ghettoise = ghettoize
+glamorise = glamorize
+glamour = glamor
+globalise = globalize
+glueing = gluing
+goitre = goiter
+gonorrhoea = gonorrhea
+gramme = gram
+gravelled = graveled
+grey = gray
+grovelled = groveled
+gruelling = grueling
+gryphon = griffon
+gynaecological = gynecological
+
+H
+haematological = hematological
+haemoglobin = hemoglobin
+haemorrhage = hemorrhage
+harbour = harbor
+harmonise = harmonize
+homoeopathy = homeopathy
+homogenised = homogenized
+honour = honor
+hospitalise = hospitalize
+humanise = humanize
+humour = humor
+hybridise = hybridize
+hypnotise = hypnotize
+hypothesise = hypothesize
+
+I
+idealise = idealize
+idolise = idolize
+immobilise = immobilize
+immortalise = immortalize
+immunise = immunize
+impanelling = impaneling
+imperilled = imperiled
+individualise = individualize
+industrialise = industrialize
+inflexion = inflection
+initialise = initialize
+initialled = initialed
+instal = install
+instalment = installment
+instil = instill
+institutionalise = institutionalize
+intellectualise = intellectualize
+internalise = internalize
+internationalise = internationalize
+ionise = ionize
+italicise = italicize
+itemise = itemize
+
+J
+jeopardise = jeopardize
+jewelled = jeweled
+jewellery = jewelry
+judgement = judgment
+
+K
+kilogramme = kilogram
+kilometre = kilometer
+
+L
+labelled = labeled
+labour = labor
+lacklustre = lackluster
+legalise = legalize
+legitimise = legitimize
+leukaemia = leukemia
+leveller = leveler
+libellous = libelous
+liberalise = liberalize
+licence = license
+licencing = licensing
+likeable = likable
+lionise = lionize
+liquidise = liquidize
+litre = liter
+localise = localize
+lustre = luster
+
+M
+magnetise = magnetize
+manoeuvre = maneuver
+marginalise = marginalize
+marshalling = marshaling
+marvelled = marveled
+marvellously = marvelously
+materialise = materialize
+maximise = maximize
+meagre = meager
+mechanise = mechanize
+mediaeval = medieval
+memorialise = memorialize
+memorise = memorize
+mesmerise = mesmerize
+metabolise = metabolize
+metre = meter
+militarise = militarize
+milligramme = milligram
+millilitre = milliliter
+miniaturise = miniaturize
+minibuses = minibusses
+minimise = minimize
+misbehaviour = misbehavior
+misdemeanour = misdemeanor
+misspelt = misspelled
+mitre = miter
+mobilise = mobilize
+modelled = modeled
+modernise = modernize
+moisturise = moisturize
+monologue = monolog
+monopolise = monopolize
+moralise = moralize
+motorise = motorize
+mould = mold
+moult = molt
+moustache = mustache
+multicoloured = multicolored
+mum = mom
+
+N
+nationalise = nationalize
+naturalise = naturalize
+neighbour = neighbor
+neighbourhood = neighborhood
+neutralise = neutralize
+normalise = normalize
+
+O
+odour = odor
+oesophagus = esophagus
+oestrogen = estrogen
+offence = offense
+omelette = omelet
+optimise = optimize
+organise = organize
+orthopaedic = orthopedic
+ostracise = ostracize
+outmanoeuvre = outmaneuver
+overemphasise = overemphasize
+oxidise = oxidize
+
+P
+paederast = pederast
+paediatrician = pediatrician
+palaeolithic = paleolithic
+palaeontologist = paleontologist
+panelled = paneled
+paralyse = paralyze
+parcelled = parceled
+parlour = parlor
+particularise = particularize
+passivise = passivize
+pasteurise = pasteurize
+patronise = patronize
+pedalling = pedaling
+pedestrianisation = pedestrianization
+penalise = penalize
+pencilling = penciling
+personalise = personalize
+pharmacopoeia = pharmacopeia
+philosophise = philosophize
+phoney = phony
+plagiarise = plagiarize
+plough = plow
+polarise = polarize
+politicise = politicize
+popularise = popularize
+practise = practice
+practising = practicing
+praesidium = presidium
+pressurise = pressurize
+pretence = pretense
+primaeval = primeval
+prioritise = prioritize
+privatise = privatize
+programme = program
+prologue = prolog
+propagandise = propagandize
+proselytise = proselytize
+psychoanalyse = psychoanalyze
+publicise = publicize
+pulverise = pulverize
+pummelling = pummeling
+pyjamas = pajamas
+pzazz = pizzazz
+
+Q
+quarrelling = quarreling
+
+R
+radicalise = radicalize
+rancour = rancor
+randomise = randomize
+rationalise = rationalize
+ravelling = raveling
+realise = realize
+recognise = recognize
+reconnoitre = reconnoiter
+refuelled = refueled
+regularise = regularize
+remodelled = remodeled
+remould = remold
+reorganise = reorganize
+revellers = revelers
+revitalise = revitalize
+revolutionise = revolutionize
+rhapsodise = rhapsodize
+rigour = rigor
+ritualise = ritualize
+rivalled = rivaled
+romanticise = romanticize
+rumour = rumor
+
+S
+sabre = saber
+saltpetre = saltpeter
+sanitise = sanitize
+satirise = satirize
+saviour = savior
+savour = savor
+scandalise = scandalize
+sceptic = skeptic
+sceptical = skeptical
+sceptre = scepter
+scrutinise = scrutinize
+secularise = secularize
+sensationalise = sensationalize
+sensitised = sensitized
+sentimentalise = sentimentalize
+sepulchre = sepulcher
+serialise = serialize
+sermonise = sermonize
+sheikh = sheik
+shovelled = shoveled
+shrivelled = shriveled
+signalise = signalize
+signalling = signaling
+smoulder = smolder
+snivelled = sniveled
+snorkelled = snorkeled
+snowplough = snowplow
+socialise = socialize
+solemnise = solemnize
+sombre = somber
+specialise = specialize
+spectre = specter
+spiralling = spiraling
+splendour = splendor
+squirrelling = squirreling
+stabilise = stabilize
+standardise = standardize
+stencilling = stenciling
+sterilise = sterilize
+stigmatise = stigmatize
+storey = story
+subsidised = subsidized
+succour = succor
+sulphate = sulfate
+sulphide = sulfide
+sulphur = sulfur
+summarise = summarize
+swivelling = swiveling
+symbolise = symbolize
+sympathise = sympathize
+synchronise = synchronize
+synthesise = synthesize
+syphon = siphon
+systemise = systemize
+
+T
+tantalise = tantalize
+tasselled = tasseled
+technicolour = technicolor
+temporise = temporize
+tenderise = tenderize
+terrorise = terrorize
+theatre = theater
+theorise = theorize
+tonne = ton
+towelling = toweling
+toxaemia = toxemia
+tranquillise = tranquilize
+tranquilliser = tranquilizer
+transistorise = transistorize
+traumatise = traumatize
+traveller = traveler
+travelogue = travelog
+trialling = trialing
+tricolour = tricolor
+trivialise = trivialize
+tumour = tumor
+tunnelling = tunneling
+tyrannise = tyrannize
+tyre = tire
+
+U
+unauthorised = unauthorized
+uncivilised = uncivilized
+underutilised = underutilized
+unequalled = unequaled
+unfavourable = unfavorable
+unionise = unionize
+unorganised = unorganized
+unravelled = unraveled
+unrecognised = unrecognized
+unrivalled = unrivaled
+unsavoury = unsavory
+untrammelled = untrammeled
+urbanise = urbanize
+utilise = utilize
+
+V
+valour = valor
+vandalise = vandalize
+vaporise = vaporize
+vapour = vapor
+verbalise = verbalize
+victimise = victimize
+vigour = vigor
+visualise = visualize
+vocalise = vocalize
+vulcanise = vulcanize
+vulgarise = vulgarize
+
+W
+waggon = wagon
+watercolour = watercolor
+weaselled = weaseled
+westernisation = westernization
+womanise = womanize
+woollen = woolen
+worshipped = worshiped
+
+Y
+yodelling = yodeling
+yoghurt = yogurt
+
+A
+Aeroplane = Airplane
+Aluminium = Aluminum
+Aubergine = Eggplant
+Autumn = Fall
+
+B
+Barrister = Attorney
+Bill = Check
+Bin (for rubbish) = Trashcan
+Biscuit = Cookie
+Bloke/ Chap = Dude
+Bonnet (of a car) = Hood
+Booking = Reservation
+Boot (of a car) = Trunk
+Braces = Suspenders
+Buggy (Push chair) = Stroller
+Bum bag = Fanny pack
+
+C
+Candy floss = Cotton candy
+Caravan = Trailer
+Carpark = Parking lot
+Cellar = Basement
+Chemist = Drugstore
+Cheque = Check
+Chips = Fries
+Cinema = Movie theater
+Coach = Bus
+Continuous tense = Progressive tense
+Coriander = Cilantro
+Courgette = Zucchini
+Crisps = Chips
+Curtains = Drapes
+
+D
+Dressing gown = Bathrobe
+Dummy = Pacifier
+Dustbin = Trashcan
+
+E
+Estate agency = Real estate agency
+Estate car = Station wagon
+
+F
+Film = Movie
+Fitted (past tense of to fit) = Fit
+Flat = Apartment
+Football = Soccer
+Fringe = Bangs
+Full stop = Period
+
+G
+Garden = Yard
+Gearbox = Transmission
+Gear lever = Stick shift
+Ground floor = First floor
+
+H
+High street = Main street
+Hob = Stovetop
+Holiday = Vacation
+Hoover = Vacuum cleaner
+
+I
+Ill = Sick
+Insect = Bug
+Inverted commas = Quotation marks
+
+J
+Jam = Jelly
+Jelly = Jello
+Jumper = Sweater
+Junction = Intersection
+
+L
+Ladybird = Ladybug
+Launderette = Laundromat
+Lead (for dogs) = Leash
+Lent (past of lend) = Loaned
+Lift = Elevator
+Loo = Bathroom
+Love (endearment) = Honey
+Lorry = Truck
+
+M
+Main road = Highway
+Maths = Math
+Mobile (phone) = Cellphone
+Mobile home = Trailer
+Motorway = Freeway/ Interstate
+Mum = Mom
+
+N
+Nappy = Diaper
+Note (Pound note) = Bill (Dollar bill)
+Nought = Zero
+
+P
+Pants = Underpants
+Pavement = Sidewalk
+Pedestrian crossing = Crosswalk
+Petrol = Gas
+Plait = Braid
+Plimsolls = Sneakers
+Polo neck = Turtle neck
+Pop/ Soft drinks = Soda
+Porridge = Oatmeal
+Post = Mail
+Postcode = Zipcode
+Pram = Baby carriage
+Pub = Bar
+Pudding = Sweet / Dessert
+
+Q
+Queue = Line
+
+R
+Railway = Railroad
+Resign = Quit
+Reverse charges = Collect call
+Roundabout = Circle
+Rubber = Eraser
+Rubbish = Garbage/ Trash
+
+S
+Sack (to be sacked) = Fired
+Settee/ Sofa = Couch
+Shop = Store
+Shopping Centre = Mall
+Solicitor = Lawyer/ Attorney
+Spanner = Wrench
+Spat (past of spit) = Spit
+Sunglasses = Shades
+Sweets = Candy
+
+T
+Tap = Faucet
+Telephone box = Phone booth
+Term = Semester
+Tin = Can
+Torch = Flashlight
+Trainers = Sneakers
+Trolley (supermarket) = Cart
+Trousers = Pants
+Tube/ Underground = Subway
+Tyre = Tire
+
+V
+Vest = Undershirt
+
+W
+Waistcoat = Vest
+Wardrobe = Closet
+Wellies = Rubber boots
+Windscreen = Windshield
+Wing mirror = Side mirror
+
+Z
+Zebra crossing = Crosswalk
+Zip = Zipper
+`;
+
+    function buildDialectPairs(listStr){
+      const corrections = new Map([
+        ['plagiarze','plagiarize'],
+        ['synchonize','synchronize'],
+        ['pyschoanalyze','psychoanalyze'],
+        ['exstemalisation','externalisation'],
+        ['extemalization','externalization'],
+        ['demobilze','demobilize'],
+        ['destabilze','destabilize'],
+        ['sterilze','sterilize'],
+        ['chaneling','channeling'],
+        ['out maneuver','outmaneuver'],
+      ]);
+
+      const pairs = [];
+      listStr.split(/\r?\n/).forEach(line=>{
+        const raw = line.trim();
+        if(!raw || /^[A-Z]$/.test(raw) || raw.startsWith('//')) return;
+        const m = raw.split('=');
+        if(m.length!==2) return;
+        let uk = m[0].trim().replace(/^\*+/,'');
+        let us = m[1].trim();
+        if(!uk || !us) return;
+        uk = uk.replace(/\s+/g,' ').trim();
+        us = us.replace(/\s+/g,' ').trim();
+        const ukKey = uk.toLowerCase();
+        const usKey = us.toLowerCase();
+        if (corrections.has(usKey)) us = corrections.get(usKey);
+        if (corrections.has(ukKey)) uk = corrections.get(ukKey);
+        pairs.push([uk, us]);
+      });
+      return pairs;
+    }
+
+    const DIALECT_PAIRS = buildDialectPairs(USER_DIALECT_LIST);
+    const UK2US_LIST = [...DIALECT_PAIRS].sort((a,b)=>b[0].length - a[0].length);
+    const US2UK_LIST = [...DIALECT_PAIRS].map(([uk,us])=>[us,uk]).sort((a,b)=>b[0].length - a[0].length);
+
+    function preserveCaseReplace(srcMatch, replacement){
+      if (srcMatch === srcMatch.toUpperCase()) return replacement.toUpperCase();
+      if (/^[A-Z][a-z]+(?:\s[A-Z][a-z]+)*$/.test(srcMatch)) {
+        return replacement.replace(/\b([a-z])/g, (m)=>m.toUpperCase()).replace(/\B([A-Z][A-Z]+)/g, s=>s.toLowerCase());
+      }
+      return replacement.toLowerCase();
+    }
+    function phraseRegex(term){
+      const esc = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp(`\\b${esc}\\b`, 'gi');
+    }
+    function swapWithList(text, list){
       let out = text;
-      for(const k of keys){
-        const v = map[k];
-        const re = new RegExp(`\\b${k}\\b`,'gi');
-        out = out.replace(re, (m)=>{
-          if (m === m.toUpperCase()) return v.toUpperCase();
-          if (m[0] === m[0].toUpperCase()) return v[0].toUpperCase()+v.slice(1);
-          return v;
-        });
+      for (const [from,to] of list){
+        const re = phraseRegex(from);
+        out = out.replace(re, (m)=>preserveCaseReplace(m, to));
       }
       return out;
     }
+    function swapUS2UK(text){ return swapWithList(text, US2UK_LIST); }
+    function swapUK2US(text){ return swapWithList(text, UK2US_LIST); }
 
-    // Buttons (kept all your originals, added new ones)
+    // ----- Buttons (kept all your originals) -----
     $('#convert').addEventListener('click', convert);
     $('#copy').addEventListener('click', async () => {
       if (!outputEl.value) return;
@@ -348,9 +1102,9 @@
     $('#case-title').addEventListener('click', () => transformOutput(toTitleCase));
     $('#case-ap-title').addEventListener('click', () => transformOutput(toAPTitleCase));
 
-    // Dialect buttons
-    $('#dialect-us').addEventListener('click', () => transformOutput(t=>swapDialect(t, UK2US)));
-    $('#dialect-uk').addEventListener('click', () => transformOutput(t=>swapDialect(t, US2UK)));
+    // Dialect buttons → new functions
+    $('#dialect-us').addEventListener('click', () => transformOutput(t=>swapUK2US(t)));
+    $('#dialect-uk').addEventListener('click', () => transformOutput(t=>swapUS2UK(t)));
 
     function flash(msg) {
       const b = document.createElement('div');
