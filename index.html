@@ -25,10 +25,10 @@
     label { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--muted); cursor:pointer; }
     .footer { margin-top:8px; font-size:12px; color:var(--muted); text-align:right; }
     .hint { font-size:12px; color:var(--muted); margin-top:-6px; }
-    .toolbar { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .toolbar { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; position:relative; z-index:1; }
     .toolbar .btn { padding:8px 10px; font-size:13px; }
     #output { margin-bottom: 12px; }   /* space above the toolbar */
-    .toolbar { margin-top: 12px; position: relative; z-index: 1; }
+    .hr { height:1px; background:#1a1d24; margin:10px 0; flex-basis:100%; }
   </style>
 </head>
 <body>
@@ -66,18 +66,26 @@
         </label>
         <textarea id="output" placeholder="Your cleaned, sentence-per-line text will appear here." readonly></textarea>
 
-        <!-- Case conversion toolbar -->
+        <!-- Tools -->
         <div class="toolbar">
+          <!-- Case conversion -->
           <button class="btn" id="case-sentence">Sentence case</button>
           <button class="btn" id="case-lower">lower case</button>
           <button class="btn" id="case-upper">UPPER CASE</button>
           <button class="btn" id="case-capitalized">Capitalized Case</button>
-          <button class="btn" id="case-alternating">aLtErNaTiNg cAsE</button>
           <button class="btn" id="case-title">Title Case</button>
-          <button class="btn" id="case-inverse">iNVERSE cASE</button>
+          <button class="btn" id="case-ap-title">AP title case – Google Ads</button>
+          <button class="btn" id="case-alternating">aLtErNaTiNg cAsE</button>
+          <button class="btn" id="case-inverse">Inverse Case</button>
+
+          <div class="hr"></div>
+
+          <!-- Dialect -->
+          <button class="btn" id="dialect-us">Convert to English (US)</button>
+          <button class="btn" id="dialect-uk">Convert to English (UK)</button>
         </div>
 
-        <div class="hint">Adds an empty line between sentences by design. Case tools change the output in-place.</div>
+        <div class="hint">Adds an empty line between sentences by design. Tools change the output in-place.</div>
       </div>
     </div>
 
@@ -91,6 +99,29 @@
     const stripHtmlEl = $('#stripHtml');
     const liveEl = $('#live');
     const statsEl = $('#stats');
+
+    // --- Preserve acronyms / initialisms (extendable) ---
+    const ACRONYMS = new Set([
+      'AI','USA','US','UK','EU','U.S.','U.K.','NATO','FBI','CIA','HR','CEO','CFO','CTO','CRM','API','SMS','SEO','SEM','PDF','HTML','CSS'
+    ]);
+
+    // --- US/UK spelling maps (curated; extend freely) ---
+    const US2UK = {
+      'color':'colour','colors':'colours','honor':'honour','humor':'humour',
+      'favorite':'favourite','favorites':'favourites',
+      'organize':'organise','organizes':'organises','organizing':'organising','organized':'organised','organization':'organisation',
+      'analyze':'analyse','analyzes':'analyses','analyzing':'analysing','analyzed':'analysed','analysis':'analysis',
+      'optimize':'optimise','optimized':'optimised','optimizing':'optimising','optimization':'optimisation',
+      'center':'centre','centers':'centres','meter':'metre','meters':'metres',
+      'liter':'litre','liters':'litres',
+      'defense':'defence','offense':'offence',
+      'license':'licence', 'licensed':'licenced', /* noun vs verb simplified */
+      'program':'programme', /* context dependent; simple approach */
+      'aluminum':'aluminium','catalog':'catalogue','dialog':'dialogue',
+      'traveled':'travelled','traveling':'travelling','traveler':'traveller',
+      'gray':'grey'
+    };
+    const UK2US = Object.fromEntries(Object.entries(US2UK).map(([k,v]) => [v,k]));
 
     const COMMON_ABBR = [
       "Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "Sr.", "Jr.", "St.", "Mt.",
@@ -125,25 +156,31 @@
     function normalizeInternalSpaces(s) {
       return s.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, "\n\n").trim();
     }
+    function restoreAcronyms(text){
+      // enforce preferred casing for known acronyms
+      ACRONYMS.forEach(acr=>{
+        const re = new RegExp(`\\b${acr.replace(/\./g,'\\.')}\\b`,'gi');
+        text = text.replace(re, acr);
+      });
+      return text;
+    }
 
-    // Robust sentence splitter: punctuation OR any newline becomes a boundary; keeps ellipses intact.
+    // Robust sentence splitter: punctuation OR any newline becomes a boundary; ellipses end sentences.
     function splitIntoSentences(text) {
       const ELLIP = "\uE001";  // ellipsis placeholder
       const MARK  = "\u241E";  // split marker
 
-      // Normalize ellipses to a placeholder
       let t = text
-        .replace(/\u2026/g, "...")   // convert unicode ellipsis to three dots
+        .replace(/\u2026/g, "...")   // convert unicode ellipsis
         .replace(/\.{3,}/g, ELLIP);  // protect any 3+ dots as one token
 
-      // Mark sentence boundaries AFTER punctuation (. ! ?) and AFTER ellipses
+      // AFTER punctuation (. ! ?) and AFTER ellipses
       t = t.replace(/([.!?]+["”’)\]]*)(?=\s|$)/g, `$1${MARK}`);
-      t = t.replace(new RegExp(ELLIP + '(?=\\s|$)', 'g'), ELLIP + MARK); // ellipsis ends sentence
+      t = t.replace(new RegExp(ELLIP + '(?=\\s|$)', 'g'), ELLIP + MARK);
 
       // Any newline(s) are also boundaries
       t = t.replace(/\n+/g, MARK);
 
-      // Split, trim, restore ellipses
       return t
         .split(MARK)
         .map(s => s.trim())
@@ -169,37 +206,21 @@
 
       const sentences = splitIntoSentences(text);
       const cleaned = sentences.map(s => normalizeInternalSpaces(s.replace(/\s*\n\s*/g, ' ').trim()));
-      outputEl.value = cleaned.join("\n\n") + "\n";
-      updateStats(outputEl.value);
+      let out = cleaned.join("\n\n") + "\n";
+      out = restoreAcronyms(out); // keep AI, USA, etc.
+      outputEl.value = out;
+      updateStats(out);
     }
 
     // Live mode ON by default + run once on load if input has text
     liveEl.checked = true;
     if (inputEl.value && inputEl.value.trim()) convert();
 
-    // Buttons
-    $('#convert').addEventListener('click', convert);
-    $('#copy').addEventListener('click', async () => {
-      if (!outputEl.value) return;
-      try { await navigator.clipboard.writeText(outputEl.value); flash('Copied!'); }
-      catch { outputEl.select(); document.execCommand('copy'); flash('Copied!'); }
-    });
-    $('#download').addEventListener('click', () => {
-      const blob = new Blob([outputEl.value || ""], { type: 'text/plain;charset=utf-8' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'cleaned_sentences.txt';
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    });
-    $('#clear').addEventListener('click', () => { inputEl.value = ""; outputEl.value = ""; updateStats(""); });
-    inputEl.addEventListener('input', () => { if (liveEl.checked) convert(); });
-
     // ---- Case conversion helpers (operate on OUTPUT text; preserve blank lines) ----
     function transformOutput(fn) {
       const newText = fn(outputEl.value || "");
-      outputEl.value = newText;
-      updateStats(newText);
+      outputEl.value = restoreAcronyms(newText);
+      updateStats(outputEl.value);
     }
 
     function toLower(text) { return text.toLowerCase(); }
@@ -218,45 +239,106 @@
         return ch;
       }).join('');
     }
-    function toCapitalized(text) {
-      return text.replace(/\b([A-Za-zÁ-ÿ])([A-Za-zÁ-ÿ']*)\b/g, (_, a, b) => a.toUpperCase() + b.toLowerCase());
+
+    // Capitalize after opening quotes/brackets; preserve acronyms
+    function sentenceCapLine(line){
+      const m = line.match(/^(\s*["“”‘’'(\[\{]*)(.*)$/);
+      if(!m) return line;
+      const lead = m[1], rest = m[2];
+      const i = rest.search(/[A-Za-z]/);
+      if(i === -1) return line;
+      return lead + rest.slice(0,i) + rest[i].toUpperCase() + rest.slice(i+1);
     }
     function toSentenceCase(text) {
-      // Work line-by-line so each sentence line gets capitalized; keep blanks
       return text.split('\n').map(line => {
         const trimmed = line.trim();
         if (!trimmed) return line; // keep blank lines
         const lower = trimmed.toLowerCase();
-        // Capitalize first alphabetical character
-        const i = lower.search(/[a-z]/i);
-        if (i === -1) return lower;
-        return lower.slice(0, i) + lower[i].toUpperCase() + lower.slice(i + 1);
-      }).join('\n');
-    }
-    function toTitleCase(text) {
-      const small = new Set(['a','an','the','and','but','or','nor','for','so','yet','as','at','by','in','of','on','per','to','via','from','over','into','onto','off','up','down','with','without']);
-      return text.split('\n').map(line => {
-        const words = line.split(/(\s+)/); // keep spaces
-        let firstReal = -1, lastReal = -1;
-        for (let i=0;i<words.length;i++) if (/\S/.test(words[i])) { firstReal = i; break; }
-        for (let i=words.length-1;i>=0;i--) if (/\S/.test(words[i])) { lastReal = i; break; }
-        return words.map((w, idx) => {
-          if (!/\S/.test(w)) return w;
-          const plain = w.replace(/[^A-Za-zÁ-ÿ']/g, '');
-          const core = plain.toLowerCase();
-          const cap = core ? core[0].toUpperCase() + core.slice(1) : '';
-          const rebuilt = w.replace(plain, cap);
-          const isEdge = (idx === firstReal || idx === lastReal);
-          if (!isEdge && small.has(core)) {
-            // small word -> lower
-            return w.replace(plain, core);
-          }
-          return rebuilt;
-        }).join('');
+        return sentenceCapLine(lower);
       }).join('\n');
     }
 
-    // Hook up toolbar
+    // Capitalized Case (each word), preserving acronyms
+    function toCapitalized(text) {
+      return text.replace(/\b([A-Za-zÁ-ÿ]+)\b/g, (w) => {
+        if (ACRONYMS.has(w) || ACRONYMS.has(w.toUpperCase())) return w.toUpperCase();
+        return w[0].toUpperCase() + w.slice(1).toLowerCase();
+      });
+    }
+
+    // Generic Title Case + AP Title Case
+    const SMALL_WORDS = new Set(['a','an','the','and','but','or','nor','for','so','yet','as','at','by','in','of','on','per','to','via','from','over','into','onto','off','up','down','with','without']);
+    function titleCaseCore(line, apMode=false){
+      const tokens = line.split(/(\s+)/); // keep spaces
+      let first=-1,last=-1;
+      for(let i=0;i<tokens.length;i++) if(/\S/.test(tokens[i])){ first=i; break; }
+      for(let i=tokens.length-1;i>=0;i--) if(/\S/.test(tokens[i])){ last=i; break; }
+      let afterStrongSep=false; // after : or — treat next as strong
+      return tokens.map((tok,idx)=>{
+        if(!/\S/.test(tok)) return tok;
+
+        // strip punctuation for logic
+        const plain = tok.replace(/[^A-Za-zÁ-ÿ'.-]/g,'');
+        const isAcr = ACRONYMS.has(plain) || ACRONYMS.has(plain.toUpperCase());
+        const isAllCapsShort = /^[A-Z]{2,5}$/.test(plain);
+        if(isAcr || isAllCapsShort) return tok.replace(plain, plain.toUpperCase());
+
+        const core = plain.toLowerCase();
+        const edge = (idx===first || idx===last) || afterStrongSep;
+        const isVerbShort = apMode && /^(is|am|are|be|been|being|was|were|do|does|did)$/.test(core);
+
+        let out;
+        if(!edge && !isVerbShort && SMALL_WORDS.has(core)){
+          out = core; // small word in middle
+        } else {
+          out = core.split('-').map((part,i)=>{
+            if (apMode && SMALL_WORDS.has(part) && i>0) return part;
+            return part ? part[0].toUpperCase()+part.slice(1) : part;
+          }).join('-');
+        }
+        const rebuilt = tok.replace(plain, out);
+        afterStrongSep = /[:—–-]$/.test(tok);
+        return rebuilt;
+      }).join('');
+    }
+    function toTitleCase(text) { return text.split('\n').map(l=>titleCaseCore(l,false)).join('\n'); }
+    function toAPTitleCase(text) { return text.split('\n').map(l=>titleCaseCore(l,true)).join('\n'); }
+
+    // Dialect swap preserving case style
+    function swapDialect(text, map){
+      const keys = Object.keys(map).sort((a,b)=>b.length-a.length);
+      let out = text;
+      for(const k of keys){
+        const v = map[k];
+        const re = new RegExp(`\\b${k}\\b`,'gi');
+        out = out.replace(re, (m)=>{
+          if (m === m.toUpperCase()) return v.toUpperCase();
+          if (m[0] === m[0].toUpperCase()) return v[0].toUpperCase()+v.slice(1);
+          return v;
+        });
+      }
+      return out;
+    }
+
+    // Buttons (kept all your originals, added new ones)
+    $('#convert').addEventListener('click', convert);
+    $('#copy').addEventListener('click', async () => {
+      if (!outputEl.value) return;
+      try { await navigator.clipboard.writeText(outputEl.value); flash('Copied!'); }
+      catch { outputEl.select(); document.execCommand('copy'); flash('Copied!'); }
+    });
+    $('#download').addEventListener('click', () => {
+      const blob = new Blob([outputEl.value || ""], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'cleaned_sentences.txt';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    });
+    $('#clear').addEventListener('click', () => { inputEl.value = ""; outputEl.value = ""; updateStats(""); });
+    inputEl.addEventListener('input', () => { if (liveEl.checked) convert(); });
+
+    // Hook up case tools
     $('#case-lower').addEventListener('click', () => transformOutput(toLower));
     $('#case-upper').addEventListener('click', () => transformOutput(toUpper));
     $('#case-inverse').addEventListener('click', () => transformOutput(toInverse));
@@ -264,6 +346,11 @@
     $('#case-capitalized').addEventListener('click', () => transformOutput(toCapitalized));
     $('#case-sentence').addEventListener('click', () => transformOutput(toSentenceCase));
     $('#case-title').addEventListener('click', () => transformOutput(toTitleCase));
+    $('#case-ap-title').addEventListener('click', () => transformOutput(toAPTitleCase));
+
+    // Dialect buttons
+    $('#dialect-us').addEventListener('click', () => transformOutput(t=>swapDialect(t, UK2US)));
+    $('#dialect-uk').addEventListener('click', () => transformOutput(t=>swapDialect(t, US2UK)));
 
     function flash(msg) {
       const b = document.createElement('div');
