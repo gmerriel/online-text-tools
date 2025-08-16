@@ -250,37 +250,47 @@
     // Generic Title Case + AP Title Case
     const SMALL_WORDS = new Set(['a','an','the','and','but','or','nor','for','so','yet','as','at','by','in','of','on','per','to','via','from','over','into','onto','off','up','down','with','without']);
     function titleCaseCore(line, apMode=false){
-      const tokens = line.split(/(\s+)/); // keep spaces
-      let first=-1,last=-1;
-      for(let i=0;i<tokens.length;i++) if(/\S/.test(tokens[i])){ first=i; break; }
-      for(let i=tokens.length-1;i>=0;i--) if(/\S/.test(tokens[i])){ last=i; break; }
-      let afterStrongSep=false; // after : or — treat next as strong
-      return tokens.map((tok,idx)=>{
-        if(!/\S/.test(tok)) return tok;
+        const tokens = line.split(/(\s+)/); // keep spaces
+        let first=-1,last=-1;
+        for(let i=0;i<tokens.length;i++) if(/\S/.test(tokens[i])){ first=i; break; }
+        for(let i=tokens.length-1;i>=0;i--) if(/\S/.test(tokens[i])){ last=i; break; }
 
-        // strip punctuation for logic
-        const plain = tok.replace(/[^A-Za-zÁ-ÿ'.-]/g,'');
-        const isAcr = ACRONYMS.has(plain) || ACRONYMS.has(plain.toUpperCase());
-        const isAllCapsShort = /^[A-Z]{2,5}$/.test(plain);
-        if(isAcr || isAllCapsShort) return tok.replace(plain, plain.toUpperCase());
+        let afterStrongSep=false; // after ":" or em dash, next word is strong
+        return tokens.map((tok, idx)=>{
+          if (!/\S/.test(tok)) return tok;
 
-        const core = plain.toLowerCase();
-        const edge = (idx===first || idx===last) || afterStrongSep;
-        const isVerbShort = apMode && /^(is|am|are|be|been|being|was|were|do|does|did)$/.test(core);
+          const plain = tok.replace(/[^A-Za-zÁ-ÿ'.-]/g,'');
+          const isAcr = ACRONYMS.has(plain) || ACRONYMS.has(plain.toUpperCase());
 
-        let out;
-        if(!edge && !isVerbShort && SMALL_WORDS.has(core)){
-          out = core; // small word in middle
-        } else {
-          out = core.split('-').map((part,i)=>{
-            if (apMode && SMALL_WORDS.has(part) && i>0) return part;
-            return part ? part[0].toUpperCase()+part.slice(1) : part;
-          }).join('-');
-        }
-        const rebuilt = tok.replace(plain, out);
-        afterStrongSep = /[:—–-]$/.test(tok);
-        return rebuilt;
-      }).join('');
+          // If the token is SHOUTING (ALL CAPS) but not an acronym, normalize to lower first
+          const shouting = /^[A-Z][A-Z'.-]*$/.test(plain) && plain.length>1;
+          const base = (shouting && !isAcr) ? plain.toLowerCase() : plain;
+
+          const core = base.toLowerCase();
+          const edge = (idx===first || idx===last) || afterStrongSep;
+
+          // AP: verbs (even short ones) are always capped
+          const shortVerb = /^(is|am|are|be|been|being|was|were|do|does|did|can|could|shall|should|will|would|may|might|must|has|have|had)$/.test(core);
+
+          // AP small words rule: downcase short (≤3 letters) preps/conjs/articles in the middle
+          const isSmall = SMALL_WORDS.has(core);
+          const forceLower = !edge && (apMode ? (isSmall && core.length<=3 && !shortVerb) : isSmall);
+
+          let out;
+          if (forceLower) {
+            out = core;
+          } else {
+            out = core.split('-').map((part,i)=>{
+              if (!part) return part;
+              if (apMode && i>0 && SMALL_WORDS.has(part) && part.length<=3) return part; // keep short hyphen parts lower
+              return part[0].toUpperCase() + part.slice(1);
+            }).join('-');
+          }
+
+          const rebuilt = tok.replace(plain, out);
+          afterStrongSep = /[:—–-]$/.test(tok);
+          return rebuilt;
+        }).join('');
     }
     function toTitleCase(text) { return text.split('\n').map(l=>titleCaseCore(l,false)).join('\n'); }
     function toAPTitleCase(text) { return text.split('\n').map(l=>titleCaseCore(l,true)).join('\n'); }
@@ -1028,23 +1038,47 @@ Zip = Zipper
         ['out maneuver','outmaneuver'],
       ]);
 
-      const pairs = [];
+      const rawPairs = [];
       listStr.split(/\r?\n/).forEach(line=>{
         const raw = line.trim();
         if(!raw || /^[A-Z]$/.test(raw) || raw.startsWith('//')) return;
         const m = raw.split('=');
         if(m.length!==2) return;
+
         let uk = m[0].trim().replace(/^\*+/,'');
         let us = m[1].trim();
         if(!uk || !us) return;
+
         uk = uk.replace(/\s+/g,' ').trim();
         us = us.replace(/\s+/g,' ').trim();
+
         const ukKey = uk.toLowerCase();
         const usKey = us.toLowerCase();
         if (corrections.has(usKey)) us = corrections.get(usKey);
         if (corrections.has(ukKey)) uk = corrections.get(ukKey);
-        pairs.push([uk, us]);
+
+        rawPairs.push([uk, us]);
+
+        // Auto-derive common -ise/-ize inflections and -isation/-ization nouns
+        if (uk.toLowerCase().endsWith('ise') && us.toLowerCase().endsWith('ize')) {
+          const ru = uk.slice(0, -3); // drop "ise"
+          const rs = us.slice(0, -3); // drop "ize"
+          [
+            ['ised','ized'], ['ises','izes'], ['ising','izing'],
+            ['iser','izer'], ['isers','izers'],
+            ['isation','ization'], ['isations','izations'],
+            ['isational','izational'], ['isationally','izationally']
+          ].forEach(([a,b]) => rawPairs.push([ru + a, rs + b]));
+        }
       });
+
+      // Deduplicate
+      const seen = new Set();
+      const pairs = [];
+      for (const [a,b] of rawPairs) {
+        const key = a.toLowerCase() + '→' + b.toLowerCase();
+        if (!seen.has(key)) { seen.add(key); pairs.push([a,b]); }
+      }
       return pairs;
     }
 
@@ -1055,7 +1089,7 @@ Zip = Zipper
     function preserveCaseReplace(srcMatch, replacement){
       if (srcMatch === srcMatch.toUpperCase()) return replacement.toUpperCase();
       if (/^[A-Z][a-z]+(?:\s[A-Z][a-z]+)*$/.test(srcMatch)) {
-        return replacement.replace(/\b([a-z])/g, (m)=>m.toUpperCase()).replace(/\B([A-Z][A-Z]+)/g, s=>s.toLowerCase());
+        return replacement.replace(/\b([a-z])/g, m=>m.toUpperCase()).replace(/\B([A-Z][A-Z]+)/g, s=>s.toLowerCase());
       }
       return replacement.toLowerCase();
     }
@@ -1073,6 +1107,10 @@ Zip = Zipper
     }
     function swapUS2UK(text){ return swapWithList(text, US2UK_LIST); }
     function swapUK2US(text){ return swapWithList(text, UK2US_LIST); }
+
+    // Ensure the buttons call the new functions
+    document.getElementById('dialect-us').onclick = () => transformOutput(t => swapUK2US(t));
+    document.getElementById('dialect-uk').onclick = () => transformOutput(t => swapUS2UK(t));
 
     // ----- Buttons (kept all your originals) -----
     $('#convert').addEventListener('click', convert);
