@@ -1113,10 +1113,6 @@ Zip = Zipper
     function swapUS2UK(text){ return swapWithList(text, US2UK_LIST); }
     function swapUK2US(text){ return swapWithList(text, UK2US_LIST); }
 
-    // Ensure the buttons call the new functions
-    document.getElementById('dialect-us').onclick = () => transformOutput(t => swapUK2US(t));
-    document.getElementById('dialect-uk').onclick = () => transformOutput(t => swapUS2UK(t));
-
     // ----- Buttons (kept all your originals) -----
     $('#convert').addEventListener('click', convert);
     $('#copy').addEventListener('click', async () => {
