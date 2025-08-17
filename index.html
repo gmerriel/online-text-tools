@@ -121,6 +121,13 @@
       });
       return text;
     }
+    // Auto-replace dashes with spaced hyphen " - "
+    // Catches en dash (–), em dash (—), and horizontal bar (―)
+    function replaceEmDashes(s){
+      return s
+        .replace(/\s*[\u2013\u2014\u2015]\s*/g, ' - ') // – — ―
+        .replace(/ {2,}/g, ' ');                       // tidy doubles
+    }
 
     /* =============== Sentence splitting =============== */
     function splitIntoSentences(text){
@@ -152,6 +159,8 @@
       let text = preNormalizeWhitespace(raw);
       if(stripHtmlEl.checked && detectHtml(text)) text = stripHtmlToText(text);
       text = text.replace(/[ \t]{2,}/g,' ').replace(/\n{2,}/g,"\n");
+
+      text = replaceEmDashes(text); // auto swap em-dashes
 
       const sentences = splitIntoSentences(text);
       const cleaned = sentences.map(s => normalizeInternalSpaces(s.replace(/\s*\n\s*/g, ' ').trim()));
