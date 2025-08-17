@@ -78,6 +78,11 @@
           <button class="btn" id="case-alternating">aLtErNaTiNg cAsE</button>
           <button class="btn" id="case-inverse">Inverse Case</button>
 
+          <!-- NEW -->
+          <button class="btn" id="spam-optimiser">Spam Filter Optimiser</button>
+          <button class="btn" id="swear-silencer">Swear Word Silencer</button>
+          <!-- /NEW -->
+
           <div class="hr"></div>
 
           <!-- Dialect -->
@@ -1070,6 +1075,64 @@ Zip = Zipper
     // Dictionary tools
     $('#dialect-us').addEventListener('click', () => transformOutput(swapUK2US));
     $('#dialect-uk').addEventListener('click', () => transformOutput(swapUS2UK));
+
+        /* =============== Spam/Swear masking (consistent rule) =============== */
+    function maskWord(word) {
+      // Leave first and last visible; mask middle chars via your chosen map
+      if (word.length <= 2) return word;
+      const map = { a:'@', e:'3', i:'!', o:'0', s:'$', h:'#', u:'#', t:'+' };
+      const first = word[0];
+      const last  = word[word.length - 1];
+      const middle = word.slice(1, -1).replace(/[aeiosthu]/gi, ch => {
+        const rep = map[ch.toLowerCase()] || ch;
+        return ch === ch.toUpperCase() ? rep.toUpperCase() : rep;
+      });
+      return first + middle + last;
+    }
+
+    // Core applier: masks each whole-word hit from a list (case-insensitive)
+    function applyMasking(text, list) {
+      let result = text;
+      list.forEach(w => {
+        // \b is for word boundaries; keep single words only (no phrases) here
+        const re = new RegExp(`\\b${w.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\b`, 'gi');
+        result = result.replace(re, m => maskWord(m));
+      });
+      return result;
+    }
+
+    // Keep these tidy: single words only (phrases won’t match \b … \b cleanly)
+    const SWEAR_WORDS = [
+      'fuck','fucker','fucking','fucked','ffs',
+      'shit','shitty','shite',
+      'cunt','bollock','bollocks','bugger','bloody','wank','wanker','wanking',
+      'arse','arsehole','ass','asshole',
+      'bitch','bitches','bitching',
+      'bastard','dick','dickhead','prick',
+      'pussy','slut','whore','tits','boobs','goddamn','crap'
+    ];
+
+    const SPAM_WORDS = [
+      // Money / finance
+      'money','cash','income','earn','profit','profits','investment','invest','credit','loan','mortgage','debt','refund','dollar',
+      // Free / urgency / hype
+      'free','guarantee','guaranteed','urgent','exclusive','instant','limited','win','winner','winning','prize','jackpot','bonus','reward',
+      'congratulations','gift','giveaway',
+      // Health / pharma
+      'viagra','cialis','pharma','prescription',
+      // Gambling/adult/crypto
+      'casino','gambling','crypto','bitcoin','nft','betting','porn','adult',
+      // CTA single words (keep to single tokens)
+      'subscribe','signup','apply','claim','trial','unsubscribe','click','buy','order'
+    ];
+
+    // Button hooks
+    $('#spam-optimiser').addEventListener('click', () =>
+      transformOutput(t => applyMasking(t, SPAM_WORDS))
+    );
+    $('#swear-silencer').addEventListener('click', () =>
+      transformOutput(t => applyMasking(t, SWEAR_WORDS))
+    );
 
     // Init stats
     updateStats("");
