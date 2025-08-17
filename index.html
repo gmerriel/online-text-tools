@@ -17,7 +17,7 @@
     @media (min-width:900px){ .grid { grid-template-columns:1fr 1fr; } }
     textarea { width:100%; min-height:420px; resize:vertical; background:#0e1016; color:var(--text); border:1px solid #20232b; border-radius:10px; padding:12px 12px 44px; outline:none; }
     .controls { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-    .btn { border:1px solid #20232b; background:#141822; color:var(--text); padding:10px 14px; border-radius:10px; cursor:pointer; }
+    .btn { border:1px solid #20232b; background:#141822; color:#e7ebf3; padding:10px 14px; border-radius:10px; cursor:pointer; }
     .btn:hover { border-color:#2b3340; }
     .btn.primary { background:var(--accent); color:#00142a; border-color:transparent; font-weight:700; }
     .btn.ghost { background:transparent; }
@@ -27,7 +27,7 @@
     .hint { font-size:12px; color:var(--muted); margin-top:-6px; }
     .toolbar { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; position:relative; z-index:1; }
     .toolbar .btn { padding:8px 10px; font-size:13px; }
-    #output { margin-bottom: 12px; }   /* space above the toolbar */
+    #output { margin-bottom: 12px; }
     .hr { height:1px; background:#1a1d24; margin:10px 0; flex-basis:100%; }
   </style>
 </head>
@@ -93,6 +93,7 @@
   </div>
 
   <script>
+    /* =============== Elements & Helpers =============== */
     const $ = sel => document.querySelector(sel);
     const inputEl = $('#input');
     const outputEl = $('#output');
@@ -100,44 +101,19 @@
     const liveEl = $('#live');
     const statsEl = $('#stats');
 
-    // --- Preserve acronyms / initialisms (extendable) ---
-    const ACRONYMS = new Set([
-      'AI','USA','US','UK','EU','U.S.','U.K.','NATO','FBI','CIA','HR','CEO','CFO','CTO','CRM','API','SMS','SEO','SEM','PDF','HTML','CSS'
-    ]);
+    const ACRONYMS = new Set(['AI','USA','US','UK','EU','U.S.','U.K.','NATO','FBI','CIA','HR','CEO','CFO','CTO','CRM','API','SMS','SEO','SEM','PDF','HTML','CSS']);
 
-    const COMMON_ABBR = [
-      "Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "Sr.", "Jr.", "St.", "Mt.",
-      "vs.", "etc.", "e.g.", "i.e.", "a.m.", "p.m.", "U.S.", "U.K.", "No."
-    ];
-    const ABBR_PLACEHOLDER = "\uE000"; // private-use char
-
-    function detectHtml(s) { return /<\/?[a-z][\s\S]*>/i.test(s); }
-    function preNormalizeWhitespace(s) {
-      return s.replace(/\r\n?/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\u00A0/g, ' ');
-    }
-    function stripHtmlToText(s) {
-      s = s.replace(/<\s*br\s*\/?>/gi, "\n");
-      s = s.replace(/<\/\s*(p|div|li|h[1-6]|blockquote|tr)\s*>/gi, "\n");
-      s = s.replace(/<style[\s\S]*?<\/style>/gi, "")
-           .replace(/<script[\s\S]*?<\/script>/gi, "")
-           .replace(/<[^>]+>/g, "");
+    function detectHtml(s){ return /<\/?[a-z][\s\S]*>/i.test(s); }
+    function preNormalizeWhitespace(s){ return s.replace(/\r\n?/g,"\n").replace(/[ \t]+\n/g,"\n").replace(/\u00A0/g,' '); }
+    function stripHtmlToText(s){
+      s = s.replace(/<\s*br\s*\/?>/gi,"\n");
+      s = s.replace(/<\/\s*(p|div|li|h[1-6]|blockquote|tr)\s*>/gi,"\n");
+      s = s.replace(/<style[\s\S]*?<\/style>/gi,"")
+           .replace(/<script[\s\S]*?<\/script>/gi,"")
+           .replace(/<[^>]+>/g,"");
       return s;
     }
-    function protectAbbreviations(text) {
-      let out = text;
-      COMMON_ABBR.forEach(abbr => {
-        const safe = abbr.replace(/\./g, ABBR_PLACEHOLDER);
-        const re = new RegExp(abbr.replace('.', '\\.'), 'g');
-        out = out.replace(re, safe);
-      });
-      return out;
-    }
-    function restoreAbbreviations(text) {
-      return text.replace(new RegExp(ABBR_PLACEHOLDER, 'g'), '.');
-    }
-    function normalizeInternalSpaces(s) {
-      return s.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, "\n\n").trim();
-    }
+    function normalizeInternalSpaces(s){ return s.replace(/[ \t]{2,}/g,' ').replace(/\n{3,}/g,"\n\n").trim(); }
     function restoreAcronyms(text){
       ACRONYMS.forEach(acr=>{
         const re = new RegExp(`\\b${acr.replace(/\./g,'\\.')}\\b`,'gi');
@@ -146,162 +122,142 @@
       return text;
     }
 
-    // Robust sentence splitter: punctuation OR any newline becomes a boundary; ellipses end sentences.
-    function splitIntoSentences(text) {
+    /* =============== Sentence splitting =============== */
+    function splitIntoSentences(text){
       const ELLIP = "\uE001";  // ellipsis placeholder
       const MARK  = "\u241E";  // split marker
 
-      let t = text
-        .replace(/\u2026/g, "...")   // convert unicode ellipsis
-        .replace(/\.{3,}/g, ELLIP);  // protect any 3+ dots as one token
-
-      // AFTER punctuation (. ! ?) and AFTER ellipses
+      let t = text.replace(/\u2026/g,"...").replace(/\.{3,}/g,ELLIP);
       t = t.replace(/([.!?]+["”’)\]]*)(?=\s|$)/g, `$1${MARK}`);
-      t = t.replace(new RegExp(ELLIP + '(?=\\s|$)', 'g'), ELLIP + MARK);
-
-      // Any newline(s) are also boundaries
+      t = t.replace(new RegExp(ELLIP+'(?=\\s|$)','g'), ELLIP+MARK);
       t = t.replace(/\n+/g, MARK);
 
-      return t
-        .split(MARK)
-        .map(s => s.trim())
-        .filter(Boolean)
-        .map(s => s.replace(new RegExp(ELLIP, 'g'), '...'));
+      return t.split(MARK).map(s=>s.trim()).filter(Boolean).map(s=>s.replace(new RegExp(ELLIP,'g'),"..."));
     }
 
-    function updateStats(text) {
+    /* =============== Stats =============== */
+    function updateStats(text){
       const charCount = text.length;
-      const wordCount = text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
-      const sentenceCount = text.trim() ? text.split(/\n\s*\n/).filter(Boolean).length : 0;
-      const lineCount = text ? text.split(/\n/).filter(l => l.length > 0).length : 0;
+      const wordCount = text.trim()? text.trim().split(/\s+/).filter(Boolean).length : 0;
+      const sentenceCount = text.trim()? text.split(/\n\s*\n/).filter(Boolean).length : 0;
+      const lineCount = text ? text.split(/\n/).filter(l => l.length>0).length : 0;
       statsEl.textContent = `Characters: ${charCount} | Words: ${wordCount} | Sentences: ${sentenceCount} | Lines: ${lineCount}`;
     }
 
-    function convert() {
+    /* =============== Convert (input → output) =============== */
+    function convert(){
       let raw = inputEl.value || "";
-      if (!raw.trim()) { outputEl.value = ""; updateStats(""); return; }
+      if(!raw.trim()){ outputEl.value=""; updateStats(""); return; }
 
       let text = preNormalizeWhitespace(raw);
-      if (stripHtmlEl.checked && detectHtml(text)) text = stripHtmlToText(text);
-      text = text.replace(/[ \t]{2,}/g, ' ').replace(/\n{2,}/g, "\n");
+      if(stripHtmlEl.checked && detectHtml(text)) text = stripHtmlToText(text);
+      text = text.replace(/[ \t]{2,}/g,' ').replace(/\n{2,}/g,"\n");
 
       const sentences = splitIntoSentences(text);
       const cleaned = sentences.map(s => normalizeInternalSpaces(s.replace(/\s*\n\s*/g, ' ').trim()));
       let out = cleaned.join("\n\n") + "\n";
-      out = restoreAcronyms(out); // keep AI, USA, etc.
-      outputEl.value = out;
-      updateStats(out);
+      outputEl.value = restoreAcronyms(out);
+      updateStats(outputEl.value);
     }
 
-    // Live mode ON by default + run once on load if input has text
+    // Live mode
     liveEl.checked = true;
-    if (inputEl.value && inputEl.value.trim()) convert();
+    inputEl.addEventListener('input', ()=>{ if(liveEl.checked) convert(); });
 
-    // ---- Case conversion helpers (operate on OUTPUT text; preserve blank lines) ----
-    function transformOutput(fn) {
-      ensureOutputFilled(); // <-- auto-fill output from input if empty
-      const outputEl = $('#output');
+    /* =============== Guard to auto-fill output =============== */
+    function ensureOutputFilled(){
+      if (outputEl.value.trim()) return true;
+      if (inputEl.value && inputEl.value.trim()){ convert(); return true; }
+      flash('Add some text first');
+      return false;
+    }
+
+    /* =============== Shared transform helper =============== */
+    function transformOutput(fn){
+      if (!ensureOutputFilled()) return;
       const newText = fn(outputEl.value || "");
       outputEl.value = restoreAcronyms(newText);
       updateStats(outputEl.value);
     }
 
-    function toLower(text) { return text.toLowerCase(); }
-    function toUpper(text) { return text.toUpperCase(); }
-    function toInverse(text) {
-      return text.replace(/[a-zA-Z]/g, ch => ch === ch.toLowerCase() ? ch.toUpperCase() : ch.toLowerCase());
-    }
-    function toAlternating(text) {
-      let toggle = true;
-      return text.split('').map(ch => {
-        if (/[a-zA-Z]/.test(ch)) {
-          const out = toggle ? ch.toLowerCase() : ch.toUpperCase();
-          toggle = !toggle;
-          return out;
-        }
+    /* =============== Case transforms =============== */
+    const toLower = t => t.toLowerCase();
+    const toUpper = t => t.toUpperCase();
+    const toInverse = t => t.replace(/[a-zA-Z]/g, ch => ch===ch.toLowerCase()? ch.toUpperCase(): ch.toLowerCase());
+    function toAlternating(t){
+      let flip=true;
+      return t.split('').map(ch=>{
+        if(/[a-zA-Z]/.test(ch)){ const out = flip? ch.toLowerCase(): ch.toUpperCase(); flip=!flip; return out; }
         return ch;
       }).join('');
     }
-
-    // Capitalize after opening quotes/brackets; preserve acronyms
     function sentenceCapLine(line){
       const m = line.match(/^(\s*["“”‘’'(\[\{]*)(.*)$/);
       if(!m) return line;
-      const lead = m[1], rest = m[2];
+      const lead=m[1], rest=m[2];
       const i = rest.search(/[A-Za-z]/);
-      if(i === -1) return line;
+      if(i===-1) return line;
       return lead + rest.slice(0,i) + rest[i].toUpperCase() + rest.slice(i+1);
     }
-    function toSentenceCase(text) {
-      return text.split('\n').map(line => {
+    function toSentenceCase(text){
+      return text.split('\n').map(line=>{
         const trimmed = line.trim();
-        if (!trimmed) return line; // keep blank lines
+        if(!trimmed) return line;
         const lower = trimmed.toLowerCase();
         return sentenceCapLine(lower);
       }).join('\n');
     }
-
-    // Capitalized Case (each word), preserving acronyms
-    function toCapitalized(text) {
-      return text.replace(/\b([A-Za-zÁ-ÿ]+)\b/g, (w) => {
-        if (ACRONYMS.has(w) || ACRONYMS.has(w.toUpperCase())) return w.toUpperCase();
-        return w[0].toUpperCase() + w.slice(1).toLowerCase();
+    function toCapitalized(text){
+      return text.replace(/\b([A-Za-zÁ-ÿ]+)\b/g, (w)=>{
+        if(ACRONYMS.has(w) || ACRONYMS.has(w.toUpperCase())) return w.toUpperCase();
+        return w[0].toUpperCase()+w.slice(1).toLowerCase();
       });
     }
 
-    // Generic Title Case + AP Title Case
+    // Title Case / AP Title Case
     const SMALL_WORDS = new Set(['a','an','the','and','but','or','nor','for','so','yet','as','at','by','in','of','on','per','to','via','from','over','into','onto','off','up','down','with','without']);
     function titleCaseCore(line, apMode=false){
-        const tokens = line.split(/(\s+)/); // keep spaces
-        let first=-1,last=-1;
-        for(let i=0;i<tokens.length;i++) if(/\S/.test(tokens[i])){ first=i; break; }
-        for(let i=tokens.length-1;i>=0;i--) if(/\S/.test(tokens[i])){ last=i; break; }
+      const tokens = line.split(/(\s+)/);
+      let first=-1,last=-1;
+      for(let i=0;i<tokens.length;i++) if(/\S/.test(tokens[i])){ first=i; break; }
+      for(let i=tokens.length-1;i>=0;i--) if(/\S/.test(tokens[i])){ last=i; break; }
+      let afterStrongSep=false;
 
-        let afterStrongSep=false; // after ":" or em dash, next word is strong
-        return tokens.map((tok, idx)=>{
-          if (!/\S/.test(tok)) return tok;
+      return tokens.map((tok, idx)=>{
+        if(!/\S/.test(tok)) return tok;
 
-          const plain = tok.replace(/[^A-Za-zÁ-ÿ'.-]/g,'');
-          const isAcr = ACRONYMS.has(plain) || ACRONYMS.has(plain.toUpperCase());
+        const plain = tok.replace(/[^A-Za-zÁ-ÿ'.-]/g,'');
+        const isAcr = ACRONYMS.has(plain) || ACRONYMS.has(plain.toUpperCase());
+        const shouting = /^[A-Z][A-Z'.-]*$/.test(plain) && plain.length>1;
+        const base = (shouting && !isAcr) ? plain.toLowerCase() : plain;
 
-          // If the token is SHOUTING (ALL CAPS) but not an acronym, normalize to lower first
-          const shouting = /^[A-Z][A-Z'.-]*$/.test(plain) && plain.length>1;
-          const base = (shouting && !isAcr) ? plain.toLowerCase() : plain;
+        const core = base.toLowerCase();
+        const edge = (idx===first || idx===last) || afterStrongSep;
+        const shortVerb = /^(is|am|are|be|been|being|was|were|do|does|did|can|could|shall|should|will|would|may|might|must|has|have|had)$/.test(core);
 
-          const core = base.toLowerCase();
-          const edge = (idx===first || idx===last) || afterStrongSep;
+        const isSmall = SMALL_WORDS.has(core);
+        const forceLower = !edge && (apMode ? (isSmall && core.length<=3 && !shortVerb) : isSmall);
 
-          // AP: verbs (even short ones) are always capped
-          const shortVerb = /^(is|am|are|be|been|being|was|were|do|does|did|can|could|shall|should|will|would|may|might|must|has|have|had)$/.test(core);
+        let out;
+        if(forceLower){
+          out = core;
+        }else{
+          out = core.split('-').map((part,i)=>{
+            if(!part) return part;
+            if(apMode && i>0 && SMALL_WORDS.has(part) && part.length<=3) return part;
+            return part[0].toUpperCase()+part.slice(1);
+          }).join('-');
+        }
 
-          // AP small words rule: downcase short (≤3 letters) preps/conjs/articles in the middle
-          const isSmall = SMALL_WORDS.has(core);
-          const forceLower = !edge && (apMode ? (isSmall && core.length<=3 && !shortVerb) : isSmall);
-
-          let out;
-          if (forceLower) {
-            out = core;
-          } else {
-            out = core.split('-').map((part,i)=>{
-              if (!part) return part;
-              if (apMode && i>0 && SMALL_WORDS.has(part) && part.length<=3) return part; // keep short hyphen parts lower
-              return part[0].toUpperCase() + part.slice(1);
-            }).join('-');
-          }
-
-          const rebuilt = tok.replace(plain, out);
-          afterStrongSep = /[:—–-]$/.test(tok);
-          return rebuilt;
-        }).join('');
+        const rebuilt = tok.replace(plain, out);
+        afterStrongSep = /[:—–-]$/.test(tok);
+        return rebuilt;
+      }).join('');
     }
-    function toTitleCase(text) { return text.split('\n').map(l=>titleCaseCore(l,false)).join('\n'); }
-    function toAPTitleCase(text) { return text.split('\n').map(l=>titleCaseCore(l,true)).join('\n'); }
+    const toTitleCase = txt => txt.split('\n').map(l=>titleCaseCore(l,false)).join('\n');
+    const toAPTitleCase = txt => txt.split('\n').map(l=>titleCaseCore(l,true)).join('\n');
 
-    /* =========================
-       DIALECT CONVERTER (UK↔US)
-       Driven by your supplied list.
-       ========================= */
-
+    /* =============== Dictionary (UK ↔ US) =============== */
     const USER_DIALECT_LIST = `
 A
 accessorise = accessorize
@@ -338,7 +294,6 @@ armour = armor
 artefact = artifact
 authorise = authorize
 axe = ax
-
 B
 backpedalling = backpedaling
 bannister = banister
@@ -359,7 +314,6 @@ bowdlerise = bowdlerize
 breathalyse = breathalyze
 brutalise = brutalize
 buses = busses
-
 C
 caesarean = cesarean
 calibre = caliber
@@ -423,7 +377,6 @@ crystallisation = crystallization
 cudgelling = cudgeling
 customise = customize
 cypher = cipher
-
 D
 decentralisation = decentralization
 decriminalise = decriminalize
@@ -458,7 +411,6 @@ draught = draft
 draughtsman = draftsman
 drivelling = driveling
 duelled = dueled
-
 E
 economise = economize
 edoema = edema
@@ -484,7 +436,6 @@ exorcise = exorcize
 extemporisation = extemporization
 exstemalisation = externalization
 externalise = externalize
-
 F
 factorise = factorize
 faecal = fecal
@@ -512,7 +463,6 @@ fraternise = fraternize
 fulfil = fulfill
 fulfilment = fulfillment
 funnelling = funneling
-
 G
 galvanise = galvanize
 gambolling = gamboling
@@ -534,7 +484,6 @@ grovelled = groveled
 gruelling = grueling
 gryphon = griffon
 gynaecological = gynecological
-
 H
 haematological = hematological
 haemoglobin = hemoglobin
@@ -550,7 +499,6 @@ humour = humor
 hybridise = hybridize
 hypnotise = hypnotize
 hypothesise = hypothesize
-
 I
 idealise = idealize
 idolise = idolize
@@ -574,17 +522,14 @@ internationalise = internationalize
 ionise = ionize
 italicise = italicize
 itemise = itemize
-
 J
 jeopardise = jeopardize
 jewelled = jeweled
 jewellery = jewelry
 judgement = judgment
-
 K
 kilogramme = kilogram
 kilometre = kilometer
-
 L
 labelled = labeled
 labour = labor
@@ -603,7 +548,6 @@ liquidise = liquidize
 litre = liter
 localise = localize
 lustre = luster
-
 M
 magnetise = magnetize
 manoeuvre = maneuver
@@ -644,7 +588,6 @@ moult = molt
 moustache = mustache
 multicoloured = multicolored
 mum = mom
-
 N
 nationalise = nationalize
 naturalise = naturalize
@@ -652,7 +595,6 @@ neighbour = neighbor
 neighbourhood = neighborhood
 neutralise = neutralize
 normalise = normalize
-
 O
 odour = odor
 oesophagus = esophagus
@@ -666,7 +608,6 @@ ostracise = ostracize
 outmanoeuvre = outmaneuver
 overemphasise = overemphasize
 oxidise = oxidize
-
 P
 paederast = pederast
 paediatrician = pediatrician
@@ -711,10 +652,8 @@ pulverise = pulverize
 pummelling = pummeling
 pyjamas = pajamas
 pzazz = pizzazz
-
 Q
 quarrelling = quarreling
-
 R
 radicalise = radicalize
 rancour = rancor
@@ -738,7 +677,6 @@ ritualise = ritualize
 rivalled = rivaled
 romanticise = romanticize
 rumour = rumor
-
 S
 sabre = saber
 saltpetre = saltpeter
@@ -794,7 +732,6 @@ synchronise = synchronize
 synthesise = synthesize
 syphon = siphon
 systemise = systemize
-
 T
 tantalise = tantalize
 tasselled = tasseled
@@ -820,7 +757,6 @@ tumour = tumor
 tunnelling = tunneling
 tyrannise = tyrannize
 tyre = tire
-
 U
 unauthorised = unauthorized
 uncivilised = uncivilized
@@ -836,7 +772,6 @@ unsavoury = unsavory
 untrammelled = untrammeled
 urbanise = urbanize
 utilise = utilize
-
 V
 valour = valor
 vandalise = vandalize
@@ -849,7 +784,6 @@ visualise = visualize
 vocalise = vocalize
 vulcanise = vulcanize
 vulgarise = vulgarize
-
 W
 waggon = wagon
 watercolour = watercolor
@@ -858,17 +792,14 @@ westernisation = westernization
 womanise = womanize
 woollen = woolen
 worshipped = worshiped
-
 Y
 yodelling = yodeling
 yoghurt = yogurt
-
 A
 Aeroplane = Airplane
 Aluminium = Aluminum
 Aubergine = Eggplant
 Autumn = Fall
-
 B
 Barrister = Attorney
 Bill = Check
@@ -881,7 +812,6 @@ Boot (of a car) = Trunk
 Braces = Suspenders
 Buggy (Push chair) = Stroller
 Bum bag = Fanny pack
-
 C
 Candy floss = Cotton candy
 Caravan = Trailer
@@ -897,16 +827,13 @@ Coriander = Cilantro
 Courgette = Zucchini
 Crisps = Chips
 Curtains = Drapes
-
 D
 Dressing gown = Bathrobe
 Dummy = Pacifier
 Dustbin = Trashcan
-
 E
 Estate agency = Real estate agency
 Estate car = Station wagon
-
 F
 Film = Movie
 Fitted (past tense of to fit) = Fit
@@ -914,30 +841,25 @@ Flat = Apartment
 Football = Soccer
 Fringe = Bangs
 Full stop = Period
-
 G
 Garden = Yard
 Gearbox = Transmission
 Gear lever = Stick shift
 Ground floor = First floor
-
 H
 High street = Main street
 Hob = Stovetop
 Holiday = Vacation
 Hoover = Vacuum cleaner
-
 I
 Ill = Sick
 Insect = Bug
 Inverted commas = Quotation marks
-
 J
 Jam = Jelly
 Jelly = Jello
 Jumper = Sweater
 Junction = Intersection
-
 L
 Ladybird = Ladybug
 Launderette = Laundromat
@@ -947,7 +869,6 @@ Lift = Elevator
 Loo = Bathroom
 Love (endearment) = Honey
 Lorry = Truck
-
 M
 Main road = Highway
 Maths = Math
@@ -955,12 +876,10 @@ Mobile (phone) = Cellphone
 Mobile home = Trailer
 Motorway = Freeway/ Interstate
 Mum = Mom
-
 N
 Nappy = Diaper
 Note (Pound note) = Bill (Dollar bill)
 Nought = Zero
-
 P
 Pants = Underpants
 Pavement = Sidewalk
@@ -976,10 +895,8 @@ Postcode = Zipcode
 Pram = Baby carriage
 Pub = Bar
 Pudding = Sweet / Dessert
-
 Q
 Queue = Line
-
 R
 Railway = Railroad
 Resign = Quit
@@ -987,7 +904,6 @@ Reverse charges = Collect call
 Roundabout = Circle
 Rubber = Eraser
 Rubbish = Garbage/ Trash
-
 S
 Sack (to be sacked) = Fired
 Settee/ Sofa = Couch
@@ -998,7 +914,6 @@ Spanner = Wrench
 Spat (past of spit) = Spit
 Sunglasses = Shades
 Sweets = Candy
-
 T
 Tap = Faucet
 Telephone box = Phone booth
@@ -1010,17 +925,14 @@ Trolley (supermarket) = Cart
 Trousers = Pants
 Tube/ Underground = Subway
 Tyre = Tire
-
 V
 Vest = Undershirt
-
 W
 Waistcoat = Vest
 Wardrobe = Closet
 Wellies = Rubber boots
 Windscreen = Windshield
 Wing mirror = Side mirror
-
 Z
 Zebra crossing = Crosswalk
 Zip = Zipper
@@ -1028,16 +940,10 @@ Zip = Zipper
 
     function buildDialectPairs(listStr){
       const corrections = new Map([
-        ['plagiarze','plagiarize'],
-        ['synchonize','synchronize'],
-        ['pyschoanalyze','psychoanalyze'],
-        ['exstemalisation','externalisation'],
-        ['extemalization','externalization'],
-        ['demobilze','demobilize'],
-        ['destabilze','destabilize'],
-        ['sterilze','sterilize'],
-        ['chaneling','channeling'],
-        ['out maneuver','outmaneuver'],
+        ['plagiarze','plagiarize'], ['synchonize','synchronize'], ['pyschoanalyze','psychoanalyze'],
+        ['exstemalisation','externalisation'], ['extemalization','externalization'],
+        ['demobilze','demobilize'], ['destabilze','destabilize'], ['sterilze','sterilize'],
+        ['chaneling','channeling'], ['out maneuver','outmaneuver'],
       ]);
 
       const rawPairs = [];
@@ -1061,24 +967,22 @@ Zip = Zipper
 
         rawPairs.push([uk, us]);
 
-        // Auto-derive common -ise/-ize inflections and -isation/-ization nouns
+        // Derive -ise/-ize & -isation/-ization families
         if (uk.toLowerCase().endsWith('ise') && us.toLowerCase().endsWith('ize')) {
-          const ru = uk.slice(0, -3); // drop "ise"
-          const rs = us.slice(0, -3); // drop "ize"
+          const ru = uk.slice(0, -3), rs = us.slice(0, -3);
           [
             ['ised','ized'], ['ises','izes'], ['ising','izing'],
             ['iser','izer'], ['isers','izers'],
             ['isation','ization'], ['isations','izations'],
             ['isational','izational'], ['isationally','izationally']
-          ].forEach(([a,b]) => rawPairs.push([ru + a, rs + b]));
+          ].forEach(([a,b]) => rawPairs.push([ru+a, rs+b]));
         }
       });
 
-      // Deduplicate
-      const seen = new Set();
-      const pairs = [];
+      // Dedup
+      const seen = new Set(), pairs = [];
       for (const [a,b] of rawPairs) {
-        const key = a.toLowerCase() + '→' + b.toLowerCase();
+        const key = a.toLowerCase()+'→'+b.toLowerCase();
         if (!seen.has(key)) { seen.add(key); pairs.push([a,b]); }
       }
       return pairs;
@@ -1096,10 +1000,8 @@ Zip = Zipper
       return replacement.toLowerCase();
     }
     function phraseRegex(term){
-      // Escape regex chars in a dictionary term
       const esc = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      // Match start or non-alnum before, end or non-alnum after.
-      // Use two groups so we can keep the leading separator intact.
+      // keep leading separator (group 1), match the exact term (group 2), ensure non-alnum or end after it
       return new RegExp(`(^|[^A-Za-z0-9])(${esc})(?=$|[^A-Za-z0-9])`, 'gi');
     }
     function swapWithList(text, list){
@@ -1110,17 +1012,32 @@ Zip = Zipper
       }
       return out;
     }
-    function swapUS2UK(text){ return swapWithList(text, US2UK_LIST); }
-    function swapUK2US(text){ return swapWithList(text, UK2US_LIST); }
+    const swapUS2UK = t => swapWithList(t, US2UK_LIST);
+    const swapUK2US = t => swapWithList(t, UK2US_LIST);
 
-    // ----- Buttons (kept all your originals) -----
+    /* =============== Flash =============== */
+    function flash(msg){
+      const b=document.createElement('div');
+      b.textContent=msg;
+      b.style.position='fixed'; b.style.right='16px'; b.style.bottom='16px';
+      b.style.background='rgba(77,163,255,.95)'; b.style.color='#00142a';
+      b.style.padding='10px 14px'; b.style.borderRadius='10px'; b.style.fontWeight='700';
+      b.style.boxShadow='0 6px 30px rgba(0,0,0,.35)';
+      document.body.appendChild(b);
+      setTimeout(()=>b.remove(),1200);
+    }
+
+    /* =============== Buttons =============== */
     $('#convert').addEventListener('click', convert);
-    $('#copy').addEventListener('click', async () => {
-      if (!outputEl.value) return;
+
+    $('#copy').addEventListener('click', async ()=>{
+      if (!ensureOutputFilled()) return;
       try { await navigator.clipboard.writeText(outputEl.value); flash('Copied!'); }
       catch { outputEl.select(); document.execCommand('copy'); flash('Copied!'); }
     });
-    $('#download').addEventListener('click', () => {
+
+    $('#download').addEventListener('click', ()=>{
+      if (!ensureOutputFilled()) return;
       const blob = new Blob([outputEl.value || ""], { type: 'text/plain;charset=utf-8' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -1128,10 +1045,10 @@ Zip = Zipper
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     });
-    $('#clear').addEventListener('click', () => { inputEl.value = ""; outputEl.value = ""; updateStats(""); });
-    inputEl.addEventListener('input', () => { if (liveEl.checked) convert(); });
 
-    // Hook up case tools
+    $('#clear').addEventListener('click', ()=>{ inputEl.value=""; outputEl.value=""; updateStats(""); });
+
+    // Case tools
     $('#case-lower').addEventListener('click', () => transformOutput(toLower));
     $('#case-upper').addEventListener('click', () => transformOutput(toUpper));
     $('#case-inverse').addEventListener('click', () => transformOutput(toInverse));
@@ -1141,22 +1058,11 @@ Zip = Zipper
     $('#case-title').addEventListener('click', () => transformOutput(toTitleCase));
     $('#case-ap-title').addEventListener('click', () => transformOutput(toAPTitleCase));
 
-    // Dialect buttons → new functions
-    $('#dialect-us').addEventListener('click', () => transformOutput(t=>swapUK2US(t)));
-    $('#dialect-uk').addEventListener('click', () => transformOutput(t=>swapUS2UK(t)));
+    // Dictionary tools
+    $('#dialect-us').addEventListener('click', () => transformOutput(swapUK2US));
+    $('#dialect-uk').addEventListener('click', () => transformOutput(swapUS2UK));
 
-    function flash(msg) {
-      const b = document.createElement('div');
-      b.textContent = msg;
-      b.style.position='fixed'; b.style.right='16px'; b.style.bottom='16px';
-      b.style.background='rgba(77,163,255,.95)'; b.style.color='#00142a';
-      b.style.padding='10px 14px'; b.style.borderRadius='10px'; b.style.fontWeight='700';
-      b.style.boxShadow='0 6px 30px rgba(0,0,0,.35)';
-      document.body.appendChild(b);
-      setTimeout(()=>b.remove(), 1200);
-    }
-
-    // Initialize stats on load
+    // Init stats
     updateStats("");
   </script>
 </body>
