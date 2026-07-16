@@ -78,7 +78,6 @@
           <div class="muted">Input</div>
           <label><input type="checkbox" id="richMode" checked /> Styling mode — keep bold / italics / underline / links</label>
         </div>
-        <label id="stripLabel" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><input type="checkbox" id="stripHtml" checked /> Strip HTML/styling automatically</label>
         <textarea id="input" placeholder="Paste rich text, HTML, Google Docs/Word content, transcripts, etc." hidden></textarea>
         <div id="inputRich" class="richbox" contenteditable="true" data-ph="Paste from AI tools, Google Docs, Word or emails — formatting comes with it."></div>
         <div class="hint" id="inputHint">Keeps bold, italics, underline and links — strips fonts, sizes, colours, highlights and indents.</div>
@@ -132,7 +131,6 @@
     const $ = sel => document.querySelector(sel);
     const inputEl = $('#input');
     const outputEl = $('#output');
-    const stripHtmlEl = $('#stripHtml');
     const statsEl = $('#stats');
     const richModeEl = $('#richMode');
     const inputRichEl = $('#inputRich');
@@ -143,10 +141,9 @@
       const rich = richModeEl.checked;
       inputEl.hidden = rich;      inputRichEl.hidden = !rich;
       outputEl.hidden = rich;     outputRichEl.hidden = !rich;
-      $('#stripLabel').style.display = rich ? 'none' : 'flex';
       $('#inputHint').textContent = rich
         ? 'Keeps bold, italics, underline and links — strips fonts, sizes, colours, highlights and indents.'
-        : 'Tip: leave “Strip HTML” on if you paste from Docs/Word/emails.';
+        : 'Plain text mode — ALL formatting is removed, including bold, italics and links.';
     }
 
     // Full list: used only to KEEP acronyms the user already typed in capitals.
@@ -374,7 +371,7 @@
       if(!raw.trim()){ outputEl.value=""; updateStats(""); return; }
 
       let text = preNormalizeWhitespace(raw);
-      if(stripHtmlEl.checked && detectHtml(text)) text = stripHtmlToText(text);
+      if(detectHtml(text)) text = stripHtmlToText(text);
       text = text.replace(/[ \t]{2,}/g,' ').replace(/\n{2,}/g,"\n");
 
       text = replaceEmDashes(text); // auto swap em-dashes
@@ -392,7 +389,25 @@
     // Always live: output updates as you type or paste
     inputEl.addEventListener('input', convert);
     inputRichEl.addEventListener('input', convert);
-    richModeEl.addEventListener('change', ()=>{ syncMode(); convert(); });
+
+    // Toggling modes must NEVER lose the user's text — carry it across.
+    // Re-ticking with unchanged text keeps the rich version (and its formatting).
+    richModeEl.addEventListener('change', ()=>{
+      // Compare with ALL whitespace removed: a hidden element reports its text
+      // with no separators between blocks, so spacing can't be part of the check.
+      const sameText = (a,b) => a.replace(/\s+/g,'') === b.replace(/\s+/g,'');
+      if (richModeEl.checked){
+        const plain = inputEl.value;
+        if (plain.trim() && !sameText(plain, inputRichEl.innerText)){
+          inputRichEl.innerHTML = plain.split('\n')
+            .map(l => l.trim() ? '<div>'+escapeHtml(l)+'</div>' : BLANK_DIV).join('');
+        }
+      } else {
+        inputEl.value = inputRichEl.innerText.replace(/\n{3,}/g,'\n\n').trim();
+      }
+      syncMode();
+      convert();
+    });
 
     /* =============== Guard to auto-fill output =============== */
     function ensureOutputFilled(){
