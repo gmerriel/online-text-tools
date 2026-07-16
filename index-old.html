@@ -15,13 +15,9 @@
     .card { background:var(--card); border:1px solid #1a1d24; border-radius:14px; padding:14px; }
     .grid { display:grid; grid-template-columns:1fr; gap:14px; }
     @media (min-width:900px){ .grid { grid-template-columns:1fr 1fr; } }
-    textarea { width:100%; min-height:420px; resize:vertical; background:#0e1016; color:var(--text); border:1px solid #20232b; border-radius:10px; padding:12px 12px 44px; outline:none; font:inherit; }
-    .richbox { width:100%; min-height:420px; max-height:70vh; overflow-y:auto; background:#0e1016; color:var(--text); border:1px solid #20232b; border-radius:10px; padding:12px; outline:none; font:inherit; }
-    .richbox:empty::before { content:attr(data-ph); color:#4d5560; pointer-events:none; }
-    #outputRich { margin-bottom:12px; }
-    [hidden] { display:none !important; }
+    textarea { width:100%; min-height:420px; resize:vertical; background:#0e1016; color:var(--text); border:1px solid #20232b; border-radius:10px; padding:12px 12px 44px; outline:none; }
     .controls { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-    .btn { border:1px solid #20232b; background:#141822; color:#e7ebf3; padding:10px 14px; border-radius:10px; cursor:pointer; font:inherit; font-size:14px; }
+    .btn { border:1px solid #20232b; background:#141822; color:#e7ebf3; padding:10px 14px; border-radius:10px; cursor:pointer; }
     .btn:hover { border-color:#2b3340; }
     .btn.primary { background:var(--accent); color:#00142a; border-color:transparent; font-weight:700; }
     .btn.ghost { background:transparent; }
@@ -29,33 +25,10 @@
     label { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--muted); cursor:pointer; }
     .footer { margin-top:8px; font-size:12px; color:var(--muted); text-align:right; }
     .hint { font-size:12px; color:var(--muted); margin-top:-6px; }
-    .toolbar + .hint { margin-top:10px; }
     .toolbar { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; position:relative; z-index:1; }
     .toolbar .btn { padding:8px 10px; font-size:13px; }
-    .toggle { border:1px solid #20232b; background:#141822; border-radius:10px; padding:8px 10px; font-size:13px; color:var(--muted); }
-    .toggle:has(input:checked) { border-color:var(--accent); color:var(--text); }
     #output { margin-bottom: 12px; }
     .hr { height:1px; background:#1a1d24; margin:10px 0; flex-basis:100%; }
-
-    /* Tablet: comfortable single-column, slightly shorter editors */
-    @media (max-width:899px){
-      textarea, .richbox { min-height:300px; }
-    }
-
-    /* Mobile: stacked header, grid buttons, wrap-friendly rows */
-    @media (max-width:640px){
-      .wrap { margin:16px auto; padding:0 12px; }
-      .header { flex-direction:column; align-items:stretch; gap:10px; }
-      .controls { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-      .controls .btn { width:100%; padding:12px 10px; }
-      .row { flex-wrap:wrap; }
-      #stats { font-size:12px; width:100%; }
-      textarea { min-height:220px; padding:10px 10px 36px; }
-      .richbox { min-height:220px; padding:10px; }
-      .toolbar { gap:6px; }
-      .toolbar .btn { flex:1 1 46%; padding:10px 8px; }
-      .footer { text-align:center; }
-    }
   </style>
 </head>
 <body>
@@ -63,10 +36,11 @@
     <div class="header">
       <div>
         <div class="title">Sentence Split & Clean</div>
-        <div class="muted">Paste anything → clean text → one sentence per line → keeps only bold, italics, underline &amp; links.</div>
+        <div class="muted">Paste anything → plain text → one sentence per line → blank line between.</div>
       </div>
       <div class="controls">
-        <button id="copy" class="btn primary">Copy</button>
+        <button id="convert" class="btn primary">Convert</button>
+        <button id="copy" class="btn">Copy</button>
         <button id="download" class="btn">Download .txt</button>
         <button id="clear" class="btn ghost">Clear</button>
       </div>
@@ -76,16 +50,10 @@
       <div class="card">
         <div class="row" style="margin-bottom:6px">
           <div class="muted">Input</div>
-          <label><input type="checkbox" id="richMode" checked /> Styling mode — keep bold / italics / underline / links</label>
+          <label><input type="checkbox" id="stripHtml" checked /> Strip HTML/styling automatically</label>
         </div>
-        <label id="stripLabel" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><input type="checkbox" id="stripHtml" checked /> Strip HTML/styling automatically</label>
-        <textarea id="input" placeholder="Paste rich text, HTML, Google Docs/Word content, transcripts, etc." hidden></textarea>
-        <div id="inputRich" class="richbox" contenteditable="true" data-ph="Paste from AI tools, Google Docs, Word or emails — formatting comes with it."></div>
-        <div class="hint" id="inputHint">Keeps bold, italics, underline and links — strips fonts, sizes, colours, highlights and indents.</div>
-        <div class="toolbar">
-          <button class="btn" id="sample-uk">Try an example — English (UK)</button>
-          <button class="btn" id="sample-us">Try an example — English (US)</button>
-        </div>
+        <textarea id="input" placeholder="Paste rich text, HTML, Google Docs/Word content, transcripts, etc."></textarea>
+        <div class="hint">Tip: leave “Strip HTML” on if you paste from Docs/Word/emails.</div>
       </div>
 
       <div class="card">
@@ -93,8 +61,10 @@
           <div class="muted">Output</div>
           <div id="stats" class="muted">Characters: 0 | Words: 0 | Sentences: 0 | Lines: 0</div>
         </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+          <input type="checkbox" id="live" checked /> Live as you type
+        </label>
         <textarea id="output" placeholder="Your cleaned, sentence-per-line text will appear here." readonly></textarea>
-        <div id="outputRich" class="richbox" contenteditable="true" data-ph="Your cleaned, sentence-per-line text will appear here." hidden></div>
 
         <!-- Tools -->
         <div class="toolbar">
@@ -108,11 +78,11 @@
           <button class="btn" id="case-alternating">aLtErNaTiNg cAsE</button>
           <button class="btn" id="case-inverse">Inverse Case</button>
 
-          <!-- Toggles: applied automatically as part of every conversion -->
+          <!-- NEW -->
           <div class="hr"></div>
-          <label class="toggle"><input type="checkbox" id="opt-swear" checked /> Swear Word Silencer</label>
-          <label class="toggle"><input type="checkbox" id="opt-spam" /> Spam Filter Optimiser</label>
-          <label class="toggle"><input type="checkbox" id="opt-email" /> Email Formatter</label>
+          <button class="btn" id="spam-optimiser">Spam Filter Optimiser</button>
+          <button class="btn" id="swear-silencer">Swear Word Silencer</button>
+          <!-- /NEW -->
 
           <div class="hr"></div>
 
@@ -121,10 +91,11 @@
           <button class="btn" id="dialect-uk">Convert to English (UK)</button>
         </div>
 
-        <div class="hint">Adds an empty line between sentences by design. Tick-boxes re-apply live; case &amp; dialect buttons change the output in place.</div>
+        <div class="hint">Adds an empty line between sentences by design. Tools change the output in-place.</div>
       </div>
     </div>
 
+    <div class="footer">Built with vanilla JS. Uses <code>Intl.Segmenter</code> for accurate sentence splitting when available.</div>
   </div>
 
   <script>
@@ -133,29 +104,10 @@
     const inputEl = $('#input');
     const outputEl = $('#output');
     const stripHtmlEl = $('#stripHtml');
+    const liveEl = $('#live');
     const statsEl = $('#stats');
-    const richModeEl = $('#richMode');
-    const inputRichEl = $('#inputRich');
-    const outputRichEl = $('#outputRich');
-    const BLANK_DIV = '<div><br></div>';
 
-    function syncMode(){
-      const rich = richModeEl.checked;
-      inputEl.hidden = rich;      inputRichEl.hidden = !rich;
-      outputEl.hidden = rich;     outputRichEl.hidden = !rich;
-      $('#stripLabel').style.display = rich ? 'none' : 'flex';
-      $('#inputHint').textContent = rich
-        ? 'Keeps bold, italics, underline and links — strips fonts, sizes, colours, highlights and indents.'
-        : 'Tip: leave “Strip HTML” on if you paste from Docs/Word/emails.';
-    }
-
-    // Full list: used only to KEEP acronyms the user already typed in capitals.
     const ACRONYMS = new Set(['AI','USA','US','UK','EU','U.S.','U.K.','NATO','FBI','CIA','HR','CEO','CFO','CTO','CRM','API','SMS','SEO','SEM','PDF','HTML','CSS']);
-    // Safe list: auto-uppercased even when typed in lower case.
-    // US, UK, AI and HR are deliberately excluded — they clash with normal
-    // words ("join us", "her ai...", "our hr"), so they are only kept
-    // uppercase when the user typed them uppercase in the first place.
-    const ACRONYMS_SAFE = new Set(['USA','EU','U.S.','U.K.','NATO','FBI','CIA','CEO','CFO','CTO','CRM','API','SMS','SEO','SEM','PDF','HTML','CSS']);
 
     function detectHtml(s){ return /<\/?[a-z][\s\S]*>/i.test(s); }
     function preNormalizeWhitespace(s){ return s.replace(/\r\n?/g,"\n").replace(/[ \t]+\n/g,"\n").replace(/\u00A0/g,' '); }
@@ -169,7 +121,7 @@
     }
     function normalizeInternalSpaces(s){ return s.replace(/[ \t]{2,}/g,' ').replace(/\n{3,}/g,"\n\n").trim(); }
     function restoreAcronyms(text){
-      ACRONYMS_SAFE.forEach(acr=>{
+      ACRONYMS.forEach(acr=>{
         const re = new RegExp(`\\b${acr.replace(/\./g,'\\.')}\\b`,'gi');
         text = text.replace(re, acr);
       });
@@ -183,179 +135,17 @@
         .replace(/ {2,}/g, ' ');                       // tidy doubles
     }
 
-    /* =============== Styling mode: sanitise rich text =============== */
-    // Keeps ONLY bold / italic / underline / links. Everything else (fonts,
-    // sizes, colours, highlights, indents, margins) is stripped. Numbered
-    // lists become literal "1. " text, bullets become "- " so they survive
-    // pasting into ad accounts and email builders.
-    const BLOCK_TAGS = new Set(['P','DIV','LI','UL','OL','H1','H2','H3','H4','H5','H6','BLOCKQUOTE','TR','TABLE','THEAD','TBODY','SECTION','ARTICLE','HEADER','FOOTER','PRE','FIGURE','HR','FORM']);
-    const escapeHtml = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const escapeAttr = s => s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
-
-    // Reads an element's own formatting. null = not specified (inherit).
-    // Google Docs wraps copies in <b style="font-weight:normal"> and uses
-    // styled <span>s for real bold/italic, so inline styles must win over tags.
-    function fmtOf(el){
-      let b=null, i=null, u=null;
-      const tag = el.tagName;
-      if(tag==='B'||tag==='STRONG') b = true;
-      if(tag==='I'||tag==='EM') i = true;
-      if(tag==='U') u = true;
-      const st = el.style || {};
-      if(st.fontWeight){ b = st.fontWeight==='bold' || st.fontWeight==='bolder' || parseInt(st.fontWeight,10)>=600; }
-      if(st.fontStyle){ i = st.fontStyle==='italic' || st.fontStyle==='oblique'; }
-      const td = st.textDecorationLine || st.textDecoration || '';
-      if(td){ u = /underline/.test(td) ? true : (/none/.test(td) ? false : u); }
-      return {b,i,u};
-    }
-
-    // Turns arbitrary pasted HTML into an array of clean block strings
-    // containing only text and <b>/<i>/<u>/<a href> tags.
-    function htmlToBlocks(html){
-      const tpl = document.createElement('template');
-      tpl.innerHTML = html;
-      tpl.content.querySelectorAll('script,style,meta,link,title').forEach(n=>n.remove());
-      const blocks = [];
-      let cur = '';
-      const flush = ()=>{
-        const t = cur.trim();
-        cur = '';
-        if(t.replace(/<[^>]+>/g,'').trim()) blocks.push(t);
-      };
-      function walk(node, fmt){
-        node.childNodes.forEach(child=>{
-          if(child.nodeType===3){
-            let t = child.nodeValue.replace(/ /g,' ').replace(/\s+/g,' ');
-            if(!t) return;
-            t = escapeHtml(t);
-            let open='', close='';
-            if(fmt.href){ open += '<a href="'+escapeAttr(fmt.href)+'">'; close = '</a>'+close; }
-            if(fmt.b){ open += '<b>'; close = '</b>'+close; }
-            if(fmt.i){ open += '<i>'; close = '</i>'+close; }
-            if(fmt.u){ open += '<u>'; close = '</u>'+close; }
-            cur += open + t + close;
-            return;
-          }
-          if(child.nodeType!==1) return;
-          const tag = child.tagName;
-          if(tag==='BR'){ flush(); return; }
-          const ff = fmtOf(child);
-          const f = {
-            b: ff.b===null ? fmt.b : ff.b,
-            i: ff.i===null ? fmt.i : ff.i,
-            u: ff.u===null ? fmt.u : ff.u,
-            href: fmt.href
-          };
-          if(tag==='A'){
-            const href = child.getAttribute('href') || '';
-            if(/^(https?:|mailto:)/i.test(href)) f.href = href;
-          }
-          if(tag==='OL' || tag==='UL'){
-            flush();
-            let n = parseInt(child.getAttribute('start'),10) || 1;
-            Array.from(child.children).forEach(li=>{
-              if(li.tagName!=='LI'){ walk(li, f); return; }
-              flush();
-              // "1- " not "1. " so re-pasting output never re-splits the number
-              cur += (tag==='OL' ? (n++)+'- ' : '- ');
-              walk(li, f);
-              flush();
-            });
-            return;
-          }
-          const isBlock = BLOCK_TAGS.has(tag);
-          if(isBlock) flush();
-          walk(child, f);
-          if(isBlock) flush();
-        });
-      }
-      walk(tpl.content, {b:false,i:false,u:false,href:null});
-      flush();
-      return blocks;
-    }
-
-    // Applies fn to the text between tags, leaving the tags untouched.
-    function mapTextTokens(html, fn){
-      return html.split(/(<[^>]+>)/).map(t => t.charAt(0)==='<' ? t : fn(t)).join('');
-    }
-
-    // Sentence-splits a clean block of HTML, repairing any b/i/u/a tags the
-    // split cut in half so formatting carries across sentences.
-    function splitRichBlock(html){
-      const ELLIP="", MARK="␞";
-      const marked = mapTextTokens(html, t=>{
-        t = shieldPS(t).replace(/…/g,'...').replace(/\.{3,}/g,ELLIP);
-        t = t.replace(/([.!?]+["”’)\]]*)(?=\s|$)/g, '$1'+MARK);
-        t = t.replace(new RegExp(ELLIP+'(?=\\s|$)','g'), ELLIP+MARK);
-        return t.replace(new RegExp(ELLIP,'g'),'...');
-      });
-      const parts = marked.split(MARK).map(s=>s.trim())
-        .filter(s => s.replace(/<[^>]+>/g,'').trim());
-      const out = [];
-      let carry = [];
-      parts.forEach(p=>{
-        const stack = carry.slice();
-        const prefix = stack.map(t=>t.open).join('');
-        p.replace(/<(\/?)([biua])(\s[^>]*)?>/gi, (m, closing, tag)=>{
-          if(closing) stack.pop(); else stack.push({tag: tag.toLowerCase(), open: m});
-          return m;
-        });
-        const suffix = stack.slice().reverse().map(t=>'</'+t.tag+'>').join('');
-        out.push((prefix + p + suffix)
-          .replace(/<(b|i|u)><\/\1>/g,'')
-          .replace(/<a [^>]*><\/a>/g,''));
-        carry = stack.slice();
-      });
-      return out;
-    }
-
-    function forEachTextNode(root, fn){
-      const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      const nodes = [];
-      while(w.nextNode()) nodes.push(w.currentNode);
-      nodes.forEach(fn);
-    }
-
-    function getOutputText(){
-      if(!richModeEl.checked) return outputEl.value;
-      return Array.from(outputRichEl.children)
-        .map(d => d.innerText.replace(/\s+/g,' ').trim())
-        .join('\n');
-    }
-
-    function convertRich(){
-      if(!inputRichEl.innerText.trim()){ outputRichEl.innerHTML=""; updateStats(""); return; }
-      let blocks = htmlToBlocks(inputRichEl.innerHTML);
-      blocks = blocks.map(b => mapTextTokens(b, replaceEmDashes));
-      const sentences = blocks.flatMap(splitRichBlock)
-        .map(s => mapTextTokens(s, t => unshieldPS(t).replace(/[ \t]{2,}/g,' ')).trim())
-        .filter(Boolean);
-      outputRichEl.innerHTML = sentences.map(s => '<div>'+s+'</div>').join(BLANK_DIV);
-      forEachTextNode(outputRichEl, n => { n.nodeValue = restoreAcronyms(n.nodeValue); });
-      if ($('#opt-swear').checked) forEachTextNode(outputRichEl, n => { n.nodeValue = applyMasking(n.nodeValue, SWEAR_WORDS); });
-      if ($('#opt-spam').checked)  forEachTextNode(outputRichEl, n => { n.nodeValue = applyMasking(n.nodeValue, SPAM_WORDS); });
-      if ($('#opt-email').checked) applyEmailFormatRich();
-      updateStats(getOutputText());
-    }
-
     /* =============== Sentence splitting =============== */
-    // "P.S." / "P.P.S." would otherwise be split as their own sentences \u2014
-    // shield their dots with a placeholder, restore after splitting.
-    const PS_DOTS = /\b(?:p\.){1,2}s\./gi;
-    const DOT_HOLD = "\uE003";
-    const shieldPS  = t => t.replace(PS_DOTS, m => m.replace(/\./g, DOT_HOLD));
-    const unshieldPS = t => t.replace(new RegExp(DOT_HOLD,'g'), '.');
-
     function splitIntoSentences(text){
       const ELLIP = "\uE001";  // ellipsis placeholder
       const MARK  = "\u241E";  // split marker
 
-      let t = shieldPS(text).replace(/\u2026/g,"...").replace(/\.{3,}/g,ELLIP);
+      let t = text.replace(/\u2026/g,"...").replace(/\.{3,}/g,ELLIP);
       t = t.replace(/([.!?]+["”’)\]]*)(?=\s|$)/g, `$1${MARK}`);
       t = t.replace(new RegExp(ELLIP+'(?=\\s|$)','g'), ELLIP+MARK);
       t = t.replace(/\n+/g, MARK);
 
-      return t.split(MARK).map(s=>s.trim()).filter(Boolean).map(s=>unshieldPS(s.replace(new RegExp(ELLIP,'g'),"...")));
+      return t.split(MARK).map(s=>s.trim()).filter(Boolean).map(s=>s.replace(new RegExp(ELLIP,'g'),"..."));
     }
 
     /* =============== Stats =============== */
@@ -369,7 +159,6 @@
 
     /* =============== Convert (input → output) =============== */
     function convert(){
-      if (richModeEl.checked){ convertRich(); return; }
       let raw = inputEl.value || "";
       if(!raw.trim()){ outputEl.value=""; updateStats(""); return; }
 
@@ -381,27 +170,17 @@
 
       const sentences = splitIntoSentences(text);
       const cleaned = sentences.map(s => normalizeInternalSpaces(s.replace(/\s*\n\s*/g, ' ').trim()));
-      let out = restoreAcronyms(cleaned.join("\n\n") + "\n");
-      if ($('#opt-swear').checked) out = applyMasking(out, SWEAR_WORDS);
-      if ($('#opt-spam').checked)  out = applyMasking(out, SPAM_WORDS);
-      if ($('#opt-email').checked) out = applyEmailFormatPlain(out);
-      outputEl.value = out;
+      let out = cleaned.join("\n\n") + "\n";
+      outputEl.value = restoreAcronyms(out);
       updateStats(outputEl.value);
     }
 
-    // Always live: output updates as you type or paste
-    inputEl.addEventListener('input', convert);
-    inputRichEl.addEventListener('input', convert);
-    richModeEl.addEventListener('change', ()=>{ syncMode(); convert(); });
+    // Live mode
+    liveEl.checked = true;
+    inputEl.addEventListener('input', ()=>{ if(liveEl.checked) convert(); });
 
     /* =============== Guard to auto-fill output =============== */
     function ensureOutputFilled(){
-      if (richModeEl.checked){
-        if (outputRichEl.innerText.trim()) return true;
-        if (inputRichEl.innerText.trim()){ convert(); return true; }
-        flash('Add some text first');
-        return false;
-      }
       if (outputEl.value.trim()) return true;
       if (inputEl.value && inputEl.value.trim()){ convert(); return true; }
       flash('Add some text first');
@@ -411,30 +190,9 @@
     /* =============== Shared transform helper =============== */
     function transformOutput(fn){
       if (!ensureOutputFilled()) return;
-      if (richModeEl.checked){
-        forEachTextNode(outputRichEl, n => { n.nodeValue = restoreAcronyms(fn(n.nodeValue)); });
-      } else {
-        const newText = fn(outputEl.value || "");
-        outputEl.value = restoreAcronyms(newText);
-      }
-      updateStats(getOutputText());
-    }
-
-    // Sentence case needs to see whole sentences, not individual formatted
-    // fragments, so styling mode gets its own per-line version.
-    function richSentenceCase(){
-      Array.from(outputRichEl.children).forEach(div=>{
-        forEachTextNode(div, n => { n.nodeValue = restoreAcronyms(n.nodeValue.toLowerCase().replace(/\bi\b/g,'I')); });
-        const w = document.createTreeWalker(div, NodeFilter.SHOW_TEXT);
-        while(w.nextNode()){
-          const n = w.currentNode, m = n.nodeValue.search(/[A-Za-z]/);
-          if(m > -1){
-            n.nodeValue = n.nodeValue.slice(0,m) + n.nodeValue[m].toUpperCase() + n.nodeValue.slice(m+1);
-            break;
-          }
-        }
-      });
-      updateStats(getOutputText());
+      const newText = fn(outputEl.value || "");
+      outputEl.value = restoreAcronyms(newText);
+      updateStats(outputEl.value);
     }
 
     /* =============== Case transforms =============== */
@@ -460,13 +218,13 @@
       return text.split('\n').map(line=>{
         const trimmed = line.trim();
         if(!trimmed) return line;
-        const lower = trimmed.toLowerCase().replace(/\bi\b/g,'I'); // keep the pronoun "I" capitalised
+        const lower = trimmed.toLowerCase();
         return sentenceCapLine(lower);
       }).join('\n');
     }
     function toCapitalized(text){
       return text.replace(/\b([A-Za-zÁ-ÿ]+)\b/g, (w)=>{
-        if(ACRONYMS.has(w) || ACRONYMS_SAFE.has(w.toUpperCase())) return w.toUpperCase();
+        if(ACRONYMS.has(w) || ACRONYMS.has(w.toUpperCase())) return w.toUpperCase();
         return w[0].toUpperCase()+w.slice(1).toLowerCase();
       });
     }
@@ -484,9 +242,7 @@
         if(!/\S/.test(tok)) return tok;
 
         const plain = tok.replace(/[^A-Za-zÁ-ÿ'.-]/g,'');
-        // Acronyms typed in capitals stay exactly as typed (US, HTML, SEO…)
-        if (ACRONYMS.has(plain)){ afterStrongSep = /[:—–-]$/.test(tok); return tok; }
-        const isAcr = ACRONYMS_SAFE.has(plain.toUpperCase());
+        const isAcr = ACRONYMS.has(plain) || ACRONYMS.has(plain.toUpperCase());
         const shouting = /^[A-Z][A-Z'.-]*$/.test(plain) && plain.length>1;
         const base = (shouting && !isAcr) ? plain.toLowerCase() : plain;
 
@@ -1212,15 +968,12 @@ Zip = Zipper
         const m = raw.split('=');
         if(m.length!==2) return;
 
-        // Clean entries like "Bin (for rubbish)" or "Settee/ Sofa" so notes
-        // and alternatives never end up inside the replaced text.
-        const cleanTerm = t => t.replace(/\([^)]*\)/g,'').replace(/\s+/g,' ').trim();
-        const ukVariants = m[0].trim().replace(/^\*+/,'').split('/').map(cleanTerm).filter(Boolean);
-        const usVariants = m[1].trim().split('/').map(cleanTerm).filter(Boolean);
-        if(!ukVariants.length || !usVariants.length) return;
+        let uk = m[0].trim().replace(/^\*+/,'');
+        let us = m[1].trim();
+        if(!uk || !us) return;
 
-        let uk = ukVariants[0];
-        let us = usVariants[0];
+        uk = uk.replace(/\s+/g,' ').trim();
+        us = us.replace(/\s+/g,' ').trim();
 
         const ukKey = uk.toLowerCase();
         const usKey = us.toLowerCase();
@@ -1228,9 +981,6 @@ Zip = Zipper
         if (corrections.has(ukKey)) uk = corrections.get(ukKey);
 
         rawPairs.push([uk, us]);
-        // Extra variants still convert, but always to the primary term.
-        ukVariants.slice(1).forEach(v => rawPairs.push([v, us]));
-        usVariants.slice(1).forEach(v => rawPairs.push([uk, v]));
 
         // Derive -ise/-ize & -isation/-ization families
         if (uk.toLowerCase().endsWith('ise') && us.toLowerCase().endsWith('ize')) {
@@ -1240,15 +990,6 @@ Zip = Zipper
             ['iser','izer'], ['isers','izers'],
             ['isation','ization'], ['isations','izations'],
             ['isational','izational'], ['isationally','izationally']
-          ].forEach(([a,b]) => rawPairs.push([ru+a, rs+b]));
-        }
-
-        // Derive -yse/-yze families (analyse → analysed/analysing, etc.)
-        if (uk.toLowerCase().endsWith('yse') && us.toLowerCase().endsWith('yze')) {
-          const ru = uk.slice(0, -3), rs = us.slice(0, -3);
-          [
-            ['ysed','yzed'], ['yses','yzes'], ['ysing','yzing'],
-            ['yser','yzer'], ['ysers','yzers']
           ].forEach(([a,b]) => rawPairs.push([ru+a, rs+b]));
         }
       });
@@ -1263,34 +1004,8 @@ Zip = Zipper
     }
 
     const DIALECT_PAIRS = buildDialectPairs(USER_DIALECT_LIST);
-
-    // Words that must NEVER be used as the *source* of a replacement, in either
-    // direction, because they are everyday words with other meanings (or are
-    // already standard in the target dialect). E.g. without this list:
-    // "I can see" → "I tin see", "check your email" → "cheque your email",
-    // "blog post" → "blog mail", "this fall" → "this autumn"(US text is fine,
-    // but "short story" → "short storey" is not).
-    const AMBIGUOUS_WORDS = new Set([
-      'bill','check','can','line','gas','story','fall','period','coach','bus','film','post','term',
-      'ill','sick','jam','jelly','love','honey','pub','bar','shop','store','garden','yard','rubber',
-      'pants','chips','tin','tap','bug','insect','quit','resign','fired','sack','circle','roundabout',
-      'shades','sunglasses','trailer','boot','bonnet','hood','trunk','flat','lift','torch','vest',
-      'jumper','fringe','plait','braces','dummy','lead','note','fit','fitted','spit','spat','lent',
-      'loaned','bathroom','mall','cookie','pop','soda','sweet','pudding','zero','zip','chemist',
-      'tube','underground','subway','cart','semester','mobile','trainers','highway','main street',
-      'jail','install','connection','inflection','wagon','almanac','gram','kilogram','centigram',
-      'milligram','meter','ton','tonne','tire','disk','disc','gauge','gage','buses','busses','gases',
-      'gasses','minibuses','minibusses','practice','license','licensing','program','draft','basement',
-      'transmission'
-    ]);
-
-    const UK2US_LIST = DIALECT_PAIRS
-      .filter(([from]) => !AMBIGUOUS_WORDS.has(from.toLowerCase()))
-      .sort((a,b)=>b[0].length - a[0].length);
-    const US2UK_LIST = DIALECT_PAIRS
-      .map(([uk,us])=>[us,uk])
-      .filter(([from]) => !AMBIGUOUS_WORDS.has(from.toLowerCase()))
-      .sort((a,b)=>b[0].length - a[0].length);
+    const UK2US_LIST = [...DIALECT_PAIRS].sort((a,b)=>b[0].length - a[0].length);
+    const US2UK_LIST = [...DIALECT_PAIRS].map(([uk,us])=>[us,uk]).sort((a,b)=>b[0].length - a[0].length);
 
     function preserveCaseReplace(srcMatch, replacement){
       if (srcMatch === srcMatch.toUpperCase()) return replacement.toUpperCase();
@@ -1328,33 +1043,17 @@ Zip = Zipper
     }
 
     /* =============== Buttons =============== */
+    $('#convert').addEventListener('click', convert);
+
     $('#copy').addEventListener('click', async ()=>{
       if (!ensureOutputFilled()) return;
-      if (richModeEl.checked){
-        try {
-          await navigator.clipboard.write([new ClipboardItem({
-            'text/html' : new Blob([outputRichEl.innerHTML], {type:'text/html'}),
-            'text/plain': new Blob([getOutputText()], {type:'text/plain'})
-          })]);
-          flash('Copied with formatting!');
-        } catch {
-          const range = document.createRange();
-          range.selectNodeContents(outputRichEl);
-          const sel = window.getSelection();
-          sel.removeAllRanges(); sel.addRange(range);
-          document.execCommand('copy');
-          sel.removeAllRanges();
-          flash('Copied with formatting!');
-        }
-        return;
-      }
       try { await navigator.clipboard.writeText(outputEl.value); flash('Copied!'); }
       catch { outputEl.select(); document.execCommand('copy'); flash('Copied!'); }
     });
 
     $('#download').addEventListener('click', ()=>{
       if (!ensureOutputFilled()) return;
-      const blob = new Blob([getOutputText() || ""], { type: 'text/plain;charset=utf-8' });
+      const blob = new Blob([outputEl.value || ""], { type: 'text/plain;charset=utf-8' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = 'cleaned_sentences.txt';
@@ -1362,7 +1061,7 @@ Zip = Zipper
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     });
 
-    $('#clear').addEventListener('click', ()=>{ inputEl.value=""; outputEl.value=""; inputRichEl.innerHTML=""; outputRichEl.innerHTML=""; updateStats(""); });
+    $('#clear').addEventListener('click', ()=>{ inputEl.value=""; outputEl.value=""; updateStats(""); });
 
     // Case tools
     $('#case-lower').addEventListener('click', () => transformOutput(toLower));
@@ -1370,101 +1069,13 @@ Zip = Zipper
     $('#case-inverse').addEventListener('click', () => transformOutput(toInverse));
     $('#case-alternating').addEventListener('click', () => transformOutput(toAlternating));
     $('#case-capitalized').addEventListener('click', () => transformOutput(toCapitalized));
-    $('#case-sentence').addEventListener('click', () => {
-      if (richModeEl.checked){ if (ensureOutputFilled()) richSentenceCase(); }
-      else transformOutput(toSentenceCase);
-    });
+    $('#case-sentence').addEventListener('click', () => transformOutput(toSentenceCase));
     $('#case-title').addEventListener('click', () => transformOutput(toTitleCase));
     $('#case-ap-title').addEventListener('click', () => transformOutput(toAPTitleCase));
 
     // Dictionary tools
     $('#dialect-us').addEventListener('click', () => transformOutput(swapUK2US));
     $('#dialect-uk').addEventListener('click', () => transformOutput(swapUS2UK));
-
-    /* =============== Email Formatter =============== */
-    // Matches PS, P.S., P.S, PS., PS:, PPS, P.P.S., P.P.S: etc. at line start.
-    const PS_RE = /^\s*(?:p\.?\s*){1,3}s\.?(?=[\s:.,\-–—)]|$)/i;
-
-    function applyEmailFormatPlain(text){
-      let lines = text.replace(/\s+$/,'').split('\n');
-      const idx = lines.findIndex(l => PS_RE.test(l));
-      if (idx > -1){
-        // exactly 4 empty lines between the sign-off and the PS
-        let i = idx;
-        while (i > 0 && !lines[i-1].trim()){ lines.splice(i-1, 1); i--; }
-        lines.splice(i, 0, '', '', '', '');
-      }
-      // 20 empty lines at the bottom to push the unsubscribe link down
-      return lines.join('\n') + '\n'.repeat(21);
-    }
-
-    function applyEmailFormatRich(){
-      while (outputRichEl.lastElementChild && !outputRichEl.lastElementChild.innerText.trim()){
-        outputRichEl.lastElementChild.remove();
-      }
-      const psDiv = Array.from(outputRichEl.children).find(d => PS_RE.test(d.innerText));
-      if (psDiv){
-        // italicise the PS line and everything after it
-        let node = psDiv;
-        while (node){
-          const h = node.innerHTML.trim();
-          if (node.innerText.trim() && !(/^<i>[\s\S]*<\/i>$/i.test(h))){
-            node.innerHTML = '<i>' + node.innerHTML + '</i>';
-          }
-          node = node.nextElementSibling;
-        }
-        // exactly 4 empty lines between the sign-off and the PS
-        while (psDiv.previousElementSibling && !psDiv.previousElementSibling.innerText.trim()){
-          psDiv.previousElementSibling.remove();
-        }
-        for (let k=0; k<4; k++) psDiv.insertAdjacentHTML('beforebegin', BLANK_DIV);
-      }
-      // 20 empty lines at the bottom to push the unsubscribe link down
-      outputRichEl.insertAdjacentHTML('beforeend', BLANK_DIV.repeat(20));
-    }
-
-    // Toggles re-run the whole conversion so they apply/remove cleanly
-    ['opt-swear','opt-spam','opt-email'].forEach(id =>
-      $('#'+id).addEventListener('change', convert)
-    );
-
-    /* =============== Example texts =============== */
-    // Each sample mixes convertible words (colour/color, organise/organize)
-    // with everyday words that must NOT be touched (us, can, check, story, post).
-    const SAMPLE_UK = `Thanks for joining us today - it means a lot to all of us.
-
-Our team will organise the colour palette and finalise the centre spread by Friday. We analysed last month's programme and realised our favourite adverts performed brilliantly.
-
-Can you check the story draft and post it on the blog? Give us a call if you'd like to talk it through.
-
-Cheers,
-Grant
-
-PS Reply to this email and tell us your biggest challenge - we read every single reply.`;
-
-    const SAMPLE_US = `Thanks for joining us today - it means a lot to all of us.
-
-Our team will organize the color palette and finalize the center spread by Friday. We analyzed last month's campaign and realized our favorite ads performed great.
-
-Can you check the story draft and post it on the blog? Give us a call if you'd like to talk it through.
-
-Cheers,
-Grant
-
-PS Reply to this email and tell us your biggest challenge - we read every single reply.`;
-
-    function loadSample(text){
-      inputEl.value = text;
-      inputRichEl.innerHTML = text.split('\n')
-        .map(l => l.trim() ? '<div>'+escapeHtml(l)+'</div>' : BLANK_DIV)
-        .join('')
-        .replace('colour palette','<b>colour palette</b>')
-        .replace('color palette','<b>color palette</b>');
-      convert();
-      flash('Example loaded — try the tools, then Copy');
-    }
-    $('#sample-uk').addEventListener('click', () => loadSample(SAMPLE_UK));
-    $('#sample-us').addEventListener('click', () => loadSample(SAMPLE_US));
 
         /* =============== Spam/Swear masking (consistent rule) =============== */
     function maskWord(word) {
@@ -1491,59 +1102,40 @@ PS Reply to this email and tell us your biggest challenge - we read every single
       return result;
     }
 
-    // Keep these tidy: single words only (phrases won’t match \b … \b cleanly).
-    // Deliberately EXCLUDED for ambiguity: hell, balls, git, sod, knob, hoe,
-    // fanny (fanny pack), spunk, shag (carpet), cum (cum laude), chink (idiom).
+    // Keep these tidy: single words only (phrases won’t match \b … \b cleanly)
     const SWEAR_WORDS = [
-      // f-family (abbreviations like ffs/wtf/stfu/omfg deliberately left alone)
-      'fuck','fucks','fucker','fuckers','fucking','fucked','fuckin','fucken',
-      'motherfucker','motherfuckers','motherfucking',
-      // s-family
-      'shit','shits','shitty','shite','shitting','shithead','shitheads','shitshow',
-      'dipshit','bullshit','bullshitter','horseshit','crap','crappy','turd','turds',
-      // UK favourites
-      'cunt','cunts','bollock','bollocks','bollocking','bugger','buggered','buggering','bloody',
-      'wank','wanks','wanker','wankers','wanking','tosser','tossers','twat','twats',
-      'bellend','bellends','knobhead','pillock','plonker','slag','slags',
-      // a-family
-      'arse','arses','arsed','arsehole','arseholes','ass','asses','asshole','assholes',
-      'jackass','jackasses','dumbass','dumbasses',
-      // b / d / p
-      'bitch','bitches','bitching','bitchy','bastard','bastards',
-      'dick','dicks','dickhead','dickheads','prick','pricks','cock','cocks','cocksucker','cocksuckers',
-      // sexual / crude
-      'pussy','pussies','slut','sluts','whore','whores','skank','skanks','tits','boobs',
-      'milf','dildo','dildos','jizz','douche','douchebag','douchebags',
-      // exclamations
-      'damn','dammit','goddamn','goddamnit',
-      // slurs — always silence
-      'nigger','niggers','nigga','niggas','faggot','faggots','fag','fags','kike',
-      'tranny','trannies','wetback','wetbacks','retard','retards','retarded'
+      'fuck','fucker','fucking','fucked','ffs',
+      'shit','shitty','shite',
+      'cunt','bollock','bollocks','bugger','bloody','wank','wanker','wanking',
+      'arse','arsehole','ass','asshole',
+      'bitch','bitches','bitching',
+      'bastard','dick','dickhead','prick',
+      'pussy','slut','whore','tits','boobs','goddamn','crap'
     ];
 
     const SPAM_WORDS = [
       // Money / finance
-      'money','cash','income','earn','profit','profits','investment','invest',
-      'credit','loan','loans','mortgage','debt','refund','dollar','dollars',
+      'money','cash','income','earn','profit','profits','investment','invest','credit','loan','mortgage','debt','refund','dollar',
       // Free / urgency / hype
-      'free','freebie','guarantee','guaranteed','urgent','urgently','exclusive','instant','limited',
-      'win','winner','winning','won','prize','prizes','jackpot','bonus','reward','rewards',
-      'congratulations','gift','giveaway','lottery','sweepstakes','contest','raffle',
-      // Deals / pricing (offer/cheap/sale/bargain/save deliberately left alone — everyday copy words)
-      'discount','discounts','coupon','coupons','promo','promotion','voucher','vouchers','clearance',
+      'free','guarantee','guaranteed','urgent','exclusive','instant','limited','win','winner','winning','prize','jackpot','bonus','reward',
+      'congratulations','gift','giveaway',
       // Health / pharma
-      'viagra','cialis','pharma','pharmacy','prescription','pills','meds','cure','miracle','medicine',
-      // Gambling / adult / crypto
+      'viagra','cialis','pharma','prescription',
+      // Gambling/adult/crypto
       'casino','gambling','crypto','bitcoin','nft','betting','porn','adult',
-      'sex','sexy','xxx','nude','naked','escort','dating',
-      // Phishing-y
-      'password','scam','spam','insurance','warranty',
       // CTA single words (keep to single tokens)
       'subscribe','signup','apply','claim','trial','unsubscribe','click','buy','order'
     ];
 
-    // Init
-    syncMode();
+    // Button hooks
+    $('#spam-optimiser').addEventListener('click', () =>
+      transformOutput(t => applyMasking(t, SPAM_WORDS))
+    );
+    $('#swear-silencer').addEventListener('click', () =>
+      transformOutput(t => applyMasking(t, SWEAR_WORDS))
+    );
+
+    // Init stats
     updateStats("");
   </script>
 </body>
