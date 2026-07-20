@@ -156,7 +156,7 @@
     const ACRONYMS_SAFE = new Set(['USA','EU','U.S.','U.K.','NATO','FBI','CIA','CEO','CFO','CTO','CRM','API','SMS','SEO','SEM','PDF','HTML','CSS']);
 
     function detectHtml(s){ return /<\/?[a-z][\s\S]*>/i.test(s); }
-    function preNormalizeWhitespace(s){ return s.replace(/\r\n?/g,"\n").replace(/[ \t]+\n/g,"\n").replace(/\u00A0/g,' '); }
+    function preNormalizeWhitespace(s){ return s.replace(/[\u00AD\u200B-\u200D\uFEFF]/g,'').replace(/\r\n?/g,"\n").replace(/[ \t]+\n/g,"\n").replace(/\u00A0/g,' '); }
     function stripHtmlToText(s){
       s = s.replace(/<\s*br\s*\/?>/gi,"\n");
       s = s.replace(/<\/\s*(p|div|li|h[1-6]|blockquote|tr)\s*>/gi,"\n");
@@ -186,7 +186,7 @@
     // sizes, colours, highlights, indents, margins) is stripped. Numbered
     // lists become literal "1. " text, bullets become "- " so they survive
     // pasting into ad accounts and email builders.
-    const BLOCK_TAGS = new Set(['P','DIV','LI','UL','OL','H1','H2','H3','H4','H5','H6','BLOCKQUOTE','TR','TABLE','THEAD','TBODY','SECTION','ARTICLE','HEADER','FOOTER','PRE','FIGURE','HR','FORM']);
+    const BLOCK_TAGS = new Set(['P','DIV','LI','UL','OL','H1','H2','H3','H4','H5','H6','BLOCKQUOTE','TR','TD','TH','TABLE','THEAD','TBODY','SECTION','ARTICLE','HEADER','FOOTER','PRE','FIGURE','HR','FORM']);
     const escapeHtml = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const escapeAttr = s => s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 
@@ -223,7 +223,7 @@
       function walk(node, fmt){
         node.childNodes.forEach(child=>{
           if(child.nodeType===3){
-            let t = child.nodeValue.replace(/ /g,' ').replace(/\s+/g,' ');
+            let t = child.nodeValue.replace(/[­​-‍﻿]/g,'').replace(/ /g,' ').replace(/\s+/g,' ');
             if(!t) return;
             t = escapeHtml(t);
             let open='', close='';
@@ -254,10 +254,16 @@
             Array.from(child.children).forEach(li=>{
               if(li.tagName!=='LI'){ walk(li, f); return; }
               flush();
-              // "1- " not "1. " so re-pasting output never re-splits the number
-              cur += (tag==='OL' ? (n++)+'- ' : '- ');
+              const mark = blocks.length;
               walk(li, f);
               flush();
+              // "1- " not "1. " so re-pasting output never re-splits the number.
+              // Prefix the first block this <li> produced — its content is often
+              // wrapped in <p>/<div>, which would otherwise orphan the marker
+              // onto its own line.
+              if (blocks.length > mark){
+                blocks[mark] = (tag==='OL' ? (n++)+'- ' : '- ') + blocks[mark];
+              }
             });
             return;
           }
@@ -280,11 +286,14 @@
     // Sentence-splits a clean block of HTML, repairing any b/i/u/a tags the
     // split cut in half so formatting carries across sentences.
     function splitRichBlock(html){
+      // Shield a leading text-format list number ("1. ") so it stays attached
+      html = html.replace(/^((?:<[^>]+>)*[ \t]*\d{1,3})\.(?=\s)/, '$1' + DOT_HOLD);
       const ELLIP="", MARK="␞";
       const marked = mapTextTokens(html, t=>{
-        t = shieldPS(t).replace(/…/g,'...').replace(/\.{3,}/g,ELLIP);
+        t = shieldAbbrevs(shieldPS(t)).replace(/…/g,'...').replace(/\.{3,}/g,ELLIP);
         t = t.replace(/([.!?]+["”’)\]]*)(?=\s|$)/g, '$1'+MARK);
-        t = t.replace(new RegExp(ELLIP+'(?=\\s|$)','g'), ELLIP+MARK);
+        // Ellipsis: split only before a new sentence (capital letter)
+        t = t.replace(new RegExp(ELLIP+'(?=\\s+["“‘\'(\\[]*[A-Z]|\\s*$)','g'), ELLIP+MARK);
         return t.replace(new RegExp(ELLIP,'g'),'...');
       });
       const parts = marked.split(MARK).map(s=>s.trim())
@@ -324,7 +333,8 @@
     function convertRich(){
       if(!inputRichEl.innerText.trim()){ outputRichEl.innerHTML=""; updateStats(""); return; }
       let blocks = htmlToBlocks(inputRichEl.innerHTML);
-      blocks = blocks.map(b => mapTextTokens(b, replaceEmDashes));
+      blocks = blocks.map(b => mapTextTokens(b, replaceEmDashes))
+                     .map(b => b.replace(/^((?:<[^>]+>)*)\s*[•·◦▪‣∙]\s*/, '$1- ')); // text bullets → "- "
       const sentences = blocks.flatMap(splitRichBlock)
         .map(s => mapTextTokens(s, t => unshieldPS(t).replace(/[ \t]{2,}/g,' ')).trim())
         .filter(Boolean);
@@ -344,13 +354,32 @@
     const shieldPS  = t => t.replace(PS_DOTS, m => m.replace(/\./g, DOT_HOLD));
     const unshieldPS = t => t.replace(new RegExp(DOT_HOLD,'g'), '.');
 
+    // Text-format list numbers ("1. ", "12. ") at line start would otherwise
+    // be split off as their own "sentence" - shield the dot, restore later.
+    const shieldListNums = t => t.replace(/(^|\n)([ \t]*\d{1,3})\.(?=[ \t])/g, (m,a,b) => a + b + DOT_HOLD);
+
+    // Don't split after abbreviations when the sentence clearly continues.
+    // Covers dotted acronyms (U.S., e.g., i.e., a.m.), common abbreviations
+    // (etc., vs., approx.), titles before names (Dr. Smith), name initials
+    // (John F. Kennedy) and "No. 5" / "Fig. 2" style references.
+    function shieldAbbrevs(t){
+      t = t.replace(/\b((?:[A-Za-z]\.){2,})(?=\s+[a-z0-9$£€])/g, m => m.replace(/\./g, DOT_HOLD));
+      t = t.replace(/\b(etc|vs|approx|incl|misc|dept|est|inc|ltd|co|corp)\.(?=\s+[a-z0-9$£€])/gi, m => m.slice(0,-1) + DOT_HOLD);
+      t = t.replace(/\b(Mr|Mrs|Ms|Dr|Prof|St|Rev|Sgt|Capt|Lt|Hon|Jr|Sr)\.(?=\s+[A-Z])/g, m => m.slice(0,-1) + DOT_HOLD);
+      t = t.replace(/([A-Z][a-z]+\s+[A-Z])\.(?=[ \t]+[A-Z][a-z])/g, (m,g) => g + DOT_HOLD);
+      t = t.replace(/\b(No|Fig|Ch|Sec|Vol|Ver|Pt)\.(?=\s*\d)/gi, m => m.slice(0,-1) + DOT_HOLD);
+      return t;
+    }
+
     function splitIntoSentences(text){
       const ELLIP = "\uE001";  // ellipsis placeholder
       const MARK  = "\u241E";  // split marker
 
-      let t = shieldPS(text).replace(/\u2026/g,"...").replace(/\.{3,}/g,ELLIP);
+      let t = shieldListNums(shieldAbbrevs(shieldPS(text))).replace(/\u2026/g,"...").replace(/\.{3,}/g,ELLIP);
       t = t.replace(/([.!?]+["”’)\]]*)(?=\s|$)/g, `$1${MARK}`);
-      t = t.replace(new RegExp(ELLIP+'(?=\\s|$)','g'), ELLIP+MARK);
+      // Ellipsis: split only before a new sentence (capital letter) — a
+      // lowercase continuation ("wait... there's more") stays together.
+      t = t.replace(new RegExp(ELLIP+'(?=\\s+["“‘\'(\\[]*[A-Z]|\\s*$)','g'), ELLIP+MARK);
       t = t.replace(/\n+/g, MARK);
 
       return t.split(MARK).map(s=>s.trim()).filter(Boolean).map(s=>unshieldPS(s.replace(new RegExp(ELLIP,'g'),"...")));
@@ -374,6 +403,7 @@
       let text = preNormalizeWhitespace(raw);
       if(detectHtml(text)) text = stripHtmlToText(text);
       text = text.replace(/[ \t]{2,}/g,' ').replace(/\n{2,}/g,"\n");
+      text = text.replace(/(^|\n)[ \t]*[•·◦▪‣∙][ \t]*/g, '$1- '); // plain-text bullets → "- "
 
       text = replaceEmDashes(text); // auto swap em-dashes
 
